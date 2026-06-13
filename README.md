@@ -122,8 +122,8 @@ the local relay (`ws://localhost:3055`). No file content or personal data leaves
 
 A few placeholders to personalize (search `TODO`):
 
-- [ ] `package.json` — set `name`, `author`, `repository`, `homepage`, `bugs`.
-- [ ] `LICENSE` — fill your name/year.
+- [ ] `package.json` — (done)
+- [ ] `LICENSE` — (done)
 - [ ] `src/figma_plugin/manifest.json` — set the plugin `name`; Figma assigns a new `id` when you publish to Community.
 - [ ] Publish the plugin via Figma desktop → *Plugins → Development → Publish*.
 - [ ] `npm publish` the server with `bun run pub:release` (after `npm login`).
