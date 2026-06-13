@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "FigmaAIConnect": {
+      "command": "bun",
+      "args": [
+        "run",
+        "dist/server.js"
+      ]
+    }
+  }
+}

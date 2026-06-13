@@ -1,0 +1,10 @@
+node_modules/
+.cursor/
+.env
+dist/
+docs/
+.DS_Store
+*.log
+.token-cache
+.idea/
+.vscode/
