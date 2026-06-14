@@ -4,7 +4,7 @@ Guidance for Claude Code (and other agents) working in this repository.
 
 ## Project Overview
 
-**FigmaAIConnect** — an MCP (Model Context Protocol) server + Figma plugin that let an AI
+**AIConnect** — an MCP (Model Context Protocol) server + Figma plugin that let an AI
 agent read and edit a live Figma file. Three components communicate in a pipeline:
 
 ```
@@ -26,7 +26,7 @@ bun setup                # Install + write .mcp.json
 
 ## Architecture
 
-### MCP Server (`src/figma_ai_connect_mcp/server.ts`)
+### MCP Server (`src/aiconnect_mcp/server.ts`)
 Implements the MCP protocol via `@modelcontextprotocol/sdk`. Exposes the tools (create
 shapes, text, layouts, fills/gradients/effects, images, export, `batch_ops`, etc.).
 Each request gets a UUID, tracked in a `pendingRequests` Map with timeout/promise

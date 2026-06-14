@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "FigmaAIConnect": {
+    "AIConnect": {
       "command": "bun",
       "args": [
         "run",

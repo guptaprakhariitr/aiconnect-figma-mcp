@@ -7,7 +7,7 @@ bun run build
 
 MCP_CONFIG='{
   "mcpServers": {
-    "FigmaAIConnect": {
+    "AIConnect": {
       "command": "bun",
       "args": [
         "run",

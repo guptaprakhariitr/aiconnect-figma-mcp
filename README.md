@@ -1,4 +1,4 @@
-# FigmaAIConnect
+# AIConnect for Figma
 
 An MCP (Model Context Protocol) server **and** a Figma plugin that let an AI agent
 (Claude Code, Cursor, or any MCP client) **read and edit a live Figma file** over a
@@ -20,7 +20,7 @@ AI agent (MCP client)
 ```
 
 Three processes:
-1. **MCP server** (`src/figma_ai_connect_mcp/server.ts` → `dist/server.js`) — exposes tools to the agent and forwards them as commands.
+1. **MCP server** (`src/aiconnect_mcp/server.ts` → `dist/server.js`) — exposes tools to the agent and forwards them as commands.
 2. **WebSocket relay** (`src/socket.ts`) — a tiny channel-based broker on port `3055`.
 3. **Figma plugin** (`src/figma_plugin/`) — runs inside Figma, executes commands against the Plugin API, returns results.
 
@@ -38,16 +38,16 @@ bun socket         # start the WebSocket relay (leave running) → port 3055
 
 **Install the plugin in Figma** (development):
 - Figma → *Plugins → Development → Import plugin from manifest…* → pick `src/figma_plugin/manifest.json`.
-- Run it: *Plugins → Development → FigmaAIConnect*. The plugin UI shows a **channel** id — copy it.
+- Run it: *Plugins → Development → AIConnect*. The plugin UI shows a **channel** id — copy it.
 
 **Register the MCP server** with your client (`.mcp.json` for Claude Code, `mcp.json` for Cursor):
 
 ```json
 {
   "mcpServers": {
-    "FigmaAIConnect": {
+    "AIConnect": {
       "command": "bun",
-      "args": ["run", "/absolute/path/to/figma-ai-connect-mcp/dist/server.js"]
+      "args": ["run", "/absolute/path/to/aiconnect-figma-mcp/dist/server.js"]
     }
   }
 }

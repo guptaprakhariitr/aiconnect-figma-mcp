@@ -3,7 +3,7 @@
   "configVersion": 0,
   "workspaces": {
     "": {
-      "name": "figma-ai-connect-mcp",
+      "name": "aiconnect-figma-mcp",
       "dependencies": {
         "@modelcontextprotocol/sdk": "1.13.1",
         "uuid": "latest",

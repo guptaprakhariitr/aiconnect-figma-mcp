@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const server = readFileSync(join(root, "src/figma_ai_connect_mcp/server.ts"), "utf8");
+const server = readFileSync(join(root, "src/aiconnect_mcp/server.ts"), "utf8");
 const plugin = readFileSync(join(root, "src/figma_plugin/code.js"), "utf8");
 
 // Commands the MCP server forwards to Figma.

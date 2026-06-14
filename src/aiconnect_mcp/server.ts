@@ -75,7 +75,7 @@ let currentChannel: string | null = null;
 
 // Create MCP server
 const server = new McpServer({
-  name: "FigmaAIConnectMCP",
+  name: "AIConnectMCP",
   version: "1.0.0",
 });
 

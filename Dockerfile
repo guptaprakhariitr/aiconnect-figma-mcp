@@ -13,4 +13,4 @@ RUN bun install
 EXPOSE 3055
 
 # Run the server when the container launches
-CMD ["bun", "src/figma_ai_connect_mcp/server.ts"]
+CMD ["bun", "src/aiconnect_mcp/server.ts"]

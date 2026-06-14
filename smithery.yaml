@@ -10,5 +10,5 @@ startCommand:
     |-
     (config) => ({
       command: 'bunx',
-      args: ['figma-ai-connect-mcp']
+      args: ['aiconnect-figma-mcp']
     })

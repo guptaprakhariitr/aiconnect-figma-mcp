@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ['src/figma_ai_connect_mcp/server.ts'],
+  entry: ['src/aiconnect_mcp/server.ts'],
   format: ['cjs', 'esm'],
   dts: true,
   clean: true,

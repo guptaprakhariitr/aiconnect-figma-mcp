@@ -1,4 +1,4 @@
-// This is the main code file for the FigmaAIConnect MCP Figma plugin
+// This is the main code file for the AIConnect MCP Figma plugin
 // It handles Figma API commands
 
 // Plugin state
@@ -3973,7 +3973,7 @@ async function createCursorNode(targetNodeId) {
     if (!importedNode || !importedNode.id) {
       throw new Error("Failed to create imported cursor node");
     }
-    importedNode.name = "FigmaAIConnect / Mouse Cursor";
+    importedNode.name = "AIConnect / Mouse Cursor";
     importedNode.resize(48, 48);
 
     const cursorNode = importedNode.findOne(node => node.type === 'VECTOR');
@@ -4128,7 +4128,7 @@ async function createConnections(params) {
       const clonedConnector = defaultConnector.clone();
       
       // Update connector name using potentially replaced node names
-      clonedConnector.name = `FigmaAIConnect_Connector/${startNode.id}/${endNode.id}`;
+      clonedConnector.name = `AIConnect_Connector/${startNode.id}/${endNode.id}`;
       
       // Set start and end points using potentially replaced IDs
       clonedConnector.connectorStart = {

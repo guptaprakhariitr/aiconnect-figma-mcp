@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Smoke test for the FigmaAIConnect plugin commands over the WebSocket relay.
+ * Smoke test for the AIConnect plugin commands over the WebSocket relay.
  *
  * Prereqs:
  *   1. Relay running:           bun socket

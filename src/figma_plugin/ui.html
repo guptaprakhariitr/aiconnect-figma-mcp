@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>FigmaAIConnect MCP Plugin</title>
+    <title>AIConnect MCP Plugin</title>
     <style>
       body {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
@@ -257,7 +257,7 @@
     <div class="container">
       <div class="header">
         <div class="header-text">
-          <h1>FigmaAIConnect MCP Plugin</h1>
+          <h1>AIConnect MCP Plugin</h1>
           <p>Connect Figma to your AI agent using MCP</p>
         </div>
       </div>
@@ -289,7 +289,7 @@
         </div>
 
         <div id="connection-status" class="status disconnected">
-          Not connected to FigmaAIConnect MCP server
+          Not connected to AIConnect MCP server
         </div>
 
         <div id="mcp-config" class="section hidden">
@@ -355,17 +355,24 @@
 
       <div id="content-about" class="tab-content">
         <div class="section">
-          <h2>About FigmaAIConnect Plugin</h2>
+          <h2>About AIConnect Plugin</h2>
           <p>
             This plugin allows your AI agent to communicate with Figma, enabling
             AI-assisted design operations.
             <a
               class="link"
-              onclick="window.open(`https://github.com/grab/figma-ai-connect-mcp`, '_blank')"
+              onclick="window.open(`https://github.com/guptaprakhariitr/aiconnect-figma-mcp`, '_blank')"
               >Github</a
             >
           </p>
           <p>Version: 1.1.0</p>
+
+          <p style="font-size: 11px; color: #888; margin-top: 12px;">
+            Requires separate free software: the open-source AIConnect MCP server and a
+            local WebSocket relay (<code>ws://localhost:3055</code>) running on your
+            machine. No account, payment, or external network is required, and no data
+            is sent anywhere. Setup instructions are on GitHub.
+          </p>
 
           <h2>How to Use</h2>
           <ol>
@@ -415,8 +422,8 @@
         let statusMessage =
           message ||
           (isConnected
-            ? "Connected to FigmaAIConnect MCP server"
-            : "Not connected to FigmaAIConnect MCP server");
+            ? "Connected to AIConnect MCP server"
+            : "Not connected to AIConnect MCP server");
 
         // Add instructions for localhost when disconnected
         if (!isConnected) {
@@ -502,7 +509,7 @@
                     {
                       pluginMessage: {
                         type: "notify",
-                        message: `Connected to FigmaAIConnect MCP server on port ${port} in channel: ${channelName}`,
+                        message: `Connected to AIConnect MCP server on port ${port} in channel: ${channelName}`,
                       },
                     },
                     "*"
@@ -867,9 +874,9 @@
       function updateMcpConfig() {
         const mcpConfig = {
           mcpServers: {
-            FigmaAIConnect: {
+            AIConnect: {
               command: "bunx",
-              args: ["figma-ai-connect-mcp@latest"],
+              args: ["aiconnect-figma-mcp@latest"],
             },
           },
         };
