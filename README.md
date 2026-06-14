@@ -102,7 +102,7 @@ Batch: **`batch_ops`** (run many of the above in one round-trip).
 
 Channel / misc: `join_channel`, annotations, connectors, focus/selection helpers.
 
-> `set_fill_color` accepts both `{ nodeId, r, g, b, a }` and `{ nodeId, color: { … } }`, so it works identically inside `batch_ops`.
+> `set_fill_color` accepts both `{ nodeId, r, g, b, a }` and `{ nodeId, color: { … } }`, so it works identically inside `batch_ops`. `set_image_fill` also works inside `batch_ops` (the server pre-encodes the image).
 
 ## Testing
 

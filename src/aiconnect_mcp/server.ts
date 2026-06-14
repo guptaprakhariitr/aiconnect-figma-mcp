@@ -142,6 +142,23 @@ server.tool(
   },
   async ({ ops, stopOnError }) => {
     try {
+      // The plugin sandbox can't read local files, so pre-encode any set_image_fill
+      // op's imagePath/imageUrl to base64 here (Node side) before sending the batch.
+      for (const op of ops as any[]) {
+        if (op && op.command === "set_image_fill" && op.params && !op.params.imageBase64 && (op.params.imagePath || op.params.imageUrl)) {
+          let bytes: Uint8Array;
+          if (op.params.imagePath) {
+            bytes = new Uint8Array(await Bun.file(op.params.imagePath).arrayBuffer());
+          } else {
+            const r = await fetch(op.params.imageUrl);
+            if (!r.ok) throw new Error(`fetch ${op.params.imageUrl} -> ${r.status}`);
+            bytes = new Uint8Array(await r.arrayBuffer());
+          }
+          op.params = { ...op.params, imageBase64: Buffer.from(bytes).toString("base64"), scaleMode: op.params.scaleMode || "FILL" };
+          delete op.params.imagePath;
+          delete op.params.imageUrl;
+        }
+      }
       const result = await sendCommandToFigma("batch_ops", { ops, stopOnError }, 180000);
       return { content: [{ type: "text", text: JSON.stringify(result) }] };
     } catch (error) {
