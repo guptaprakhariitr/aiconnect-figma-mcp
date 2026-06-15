@@ -1,5 +1,7 @@
 # AIConnect for Figma
 
+🔌 **Figma Community:** https://www.figma.com/community/plugin/1647634931958303602 *(in review)*
+
 An MCP (Model Context Protocol) server **and** a Figma plugin that let an AI agent
 (Claude Code, Cursor, or any MCP client) **read and edit a live Figma file** over a
 local WebSocket — create frames, text, auto-layout, fills, gradients, effects, SVGs,
