@@ -121,7 +121,7 @@ use, modify, and self-host it — but if you run a modified version as a network
 AGPL requires you to release your source under the same license.
 
 **Want to use AIConnect in a closed-source product or a hosted service without AGPL
-obligations?** A separate commercial license is available — contact **TODO: your-email**.
+obligations?** A separate commercial license is available — contact **prakshatechnologies@gmail.com**.
 
 Builds on prior MIT-licensed work — see [NOTICE](./NOTICE). Contributions are welcome under
 the AGPL; by contributing, you agree your contribution may also be offered under the
