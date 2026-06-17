@@ -51,7 +51,7 @@ AIConnect is an **MCP server + Figma plugin** that lets an AI agent read and edi
 
 ## 🚀 Quickstart (~2 minutes)
 
-**Prerequisites:** [Bun](https://bun.sh) and the Figma **desktop** app.
+**Prerequisites:** [Bun](https://bun.sh) and the **[Figma desktop app](https://www.figma.com/downloads/)** (free). The browser version of Figma **cannot import development plugins**, so the desktop app is required.
 
 ### 1 · Install & build
 
@@ -69,7 +69,7 @@ bun socket          # → WebSocket relay running on port 3055
 
 ### 3 · Import the plugin into Figma
 
-In the Figma desktop app, open the actions menu (or **right‑click → Plugins**) → **Development → Import plugin from manifest…** and choose [`src/figma_plugin/manifest.json`](src/figma_plugin/manifest.json).
+In the **Figma desktop app** (not the browser), open the actions menu (or **right‑click → Plugins**) → **Development → Import plugin from manifest…** and choose [`src/figma_plugin/manifest.json`](src/figma_plugin/manifest.json).
 
 <div align="center">
 <img src="assets/screenshots/step-import-manifest.png" width="560" alt="Figma → Plugins & widgets → Import from manifest" />
