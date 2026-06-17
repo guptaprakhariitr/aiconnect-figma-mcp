@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 Prakhar Gupta. Commercial license available — see README.
+
 // This is the main code file for the AIConnect MCP Figma plugin
 // It handles Figma API commands
 

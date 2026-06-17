@@ -2,7 +2,7 @@
   "name": "aiconnect-figma-mcp",
   "description": "MCP server + Figma plugin that let AI agents read and edit Figma over a local WebSocket. AIConnect adds image/font/effect/gradient/SVG commands and a batch_ops command that builds whole pages in one round-trip.",
   "version": "0.4.0",
-  "license": "MIT",
+  "license": "AGPL-3.0-or-later",
   "author": "Prakhar Gupta",
   "homepage": "https://github.com/guptaprakhariitr/aiconnect-figma-mcp#readme",
   "repository": {
