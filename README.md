@@ -1,11 +1,26 @@
 # AIConnect for Figma
 
-🔌 **Figma Community:** https://www.figma.com/community/plugin/1647634931958303602 *(in review)*
+![AIConnect](assets/aiconnect-cover-1920x960.png)
 
-An MCP (Model Context Protocol) server **and** a Figma plugin that let an AI agent
-(Claude Code, Cursor, or any MCP client) **read and edit a live Figma file** over a
-local WebSocket — create frames, text, auto-layout, fills, gradients, effects, SVGs,
-import real images, clone nodes, and assemble entire pages in one call.
+**Drive Figma from any AI agent — locally, open-source.** AIConnect is an MCP (Model
+Context Protocol) server + Figma plugin that let an agent (Claude Code, Cursor, or any
+MCP client) read and edit a live Figma file: create frames, text, auto-layout, fills,
+gradients, effects, and SVGs, import images, clone nodes, and **assemble entire pages in
+one call** via `batch_ops`.
+
+> **Note on Figma's official MCP.** Figma now ships a first-party MCP (`use_figma`).
+> AIConnect is an **independent, open-source, fully-local** alternative: client-agnostic
+> (use it with whatever agent you already run), scriptable, and built around a
+> one-round-trip `batch_ops` command for fast page building. Everything runs on your
+> machine — no Community install, no account, nothing leaves your computer. Use whichever
+> fits your workflow, or both.
+
+## Why AIConnect
+- **Local & private** — only talks to a relay on `localhost`. No telemetry, no third-party servers.
+- **Client-agnostic** — any MCP client (Claude Code, Cursor, …), not tied to one editor.
+- **`batch_ops`** — build a whole page/section in a single round-trip instead of 100+ calls.
+- **Rich commands** — images, fonts, gradients, effects, SVG, auto-layout, clone, reorder.
+- **MIT, hackable** — fork it, add commands, wire it into your own agent skills.
 
 ## How it works
 
@@ -21,49 +36,45 @@ AI agent (MCP client)
    Your Figma file
 ```
 
-Three processes:
-1. **MCP server** (`src/aiconnect_mcp/server.ts` → `dist/server.js`) — exposes tools to the agent and forwards them as commands.
-2. **WebSocket relay** (`src/socket.ts`) — a tiny channel-based broker on port `3055`.
-3. **Figma plugin** (`src/figma_plugin/`) — runs inside Figma, executes commands against the Plugin API, returns results.
+Three local processes: the **MCP server** (`src/aiconnect_mcp/server.ts` → `dist/server.js`)
+exposes tools to the agent; the **WebSocket relay** (`src/socket.ts`) brokers messages on
+port 3055; the **Figma plugin** (`src/figma_plugin/`) runs inside Figma and executes the
+commands. The agent and the plugin join the same **channel**.
 
-The agent and the plugin join the same **channel**; messages route between them through the relay.
-
-## Quick start
+## Local setup (~2 minutes)
 
 Requires [Bun](https://bun.sh) and the Figma desktop app.
 
 ```bash
-bun install
-bun run build      # build the MCP server → dist/
-bun socket         # start the WebSocket relay (leave running) → port 3055
+# 1. install + build the MCP server
+bun install && bun run build
+
+# 2. start the WebSocket relay (leave this running)
+bun socket            # → WebSocket server running on port 3055
 ```
 
-**Install the plugin in Figma** (development):
-- Figma → *Plugins → Development → Import plugin from manifest…* → pick `src/figma_plugin/manifest.json`.
-- Run it: *Plugins → Development → AIConnect*. The plugin UI shows a **channel** id — copy it.
+3. **Load the plugin in Figma** → *Plugins → Development → Import plugin from manifest…* →
+   pick `src/figma_plugin/manifest.json`. Run it (*Plugins → Development → AIConnect for
+   Figma*). The plugin window shows a **channel id** — copy it.
 
-**Register the MCP server** with your client (`.mcp.json` for Claude Code, `mcp.json` for Cursor):
+4. **Register the MCP server** with your agent (`.mcp.json` for Claude Code, `mcp.json` for Cursor):
+   ```json
+   {
+     "mcpServers": {
+       "AIConnect": { "command": "bun", "args": ["run", "/absolute/path/to/aiconnect-figma-mcp/dist/server.js"] }
+     }
+   }
+   ```
+   Or run `bun setup` to write `.mcp.json` for you.
 
-```json
-{
-  "mcpServers": {
-    "AIConnect": {
-      "command": "bun",
-      "args": ["run", "/absolute/path/to/aiconnect-figma-mcp/dist/server.js"]
-    }
-  }
-}
-```
+5. In the agent, call **`join_channel`** with the id from the plugin, and start building.
 
-**Join the channel.** In the agent, call `join_channel` with the id from the plugin UI. Now the agent can drive Figma.
-
-> Keep the Figma window focused while the agent works — Figma throttles/pauses plugins whose window is in the background, which shows up as command timeouts.
+> Keep the Figma window focused while the agent works — Figma pauses plugins whose window
+> is in the background (that shows up as command timeouts).
 
 ## `batch_ops` — build pages in one call
 
-One tool call per node is correct but slow and token-heavy: a single page can be
-100–150 calls. **`batch_ops` runs many commands in one round-trip.** Children reference
-parents created earlier in the *same* batch via `@ref` placeholders.
+Children reference parents created earlier in the same batch via `@ref` placeholders:
 
 ```jsonc
 batch_ops({
@@ -71,65 +82,38 @@ batch_ops({
     { "ref": "page", "command": "create_frame",
       "params": { "x": 0, "y": 0, "width": 1440, "height": 800, "name": "Landing",
                   "layoutMode": "VERTICAL", "fillColor": { "r": 0.98, "g": 0.96, "b": 0.92 } } },
-    { "command": "set_layout_sizing",
-      "params": { "nodeId": "@page", "layoutSizingVertical": "HUG", "layoutSizingHorizontal": "FIXED" } },
-
-    { "ref": "title", "command": "create_text",
-      "params": { "x": 0, "y": 0, "text": "Hello", "fontSize": 56, "parentId": "@page" } },
+    { "command": "set_layout_sizing", "params": { "nodeId": "@page", "layoutSizingVertical": "HUG", "layoutSizingHorizontal": "FIXED" } },
+    { "ref": "title", "command": "create_text", "params": { "x": 0, "y": 0, "text": "Hello", "fontSize": 56, "parentId": "@page" } },
     { "command": "set_font_name", "params": { "nodeId": "@title", "family": "Inter", "style": "Bold" } }
   ]
 })
-// → { ok, count, ids: { page: "12:3", title: "12:4" }, errors: [] }
+// → { ok, ids: { page: "12:3", title: "12:4" }, errors: [] }
 ```
 
-- `@ref` resolves anywhere a node id is expected, including nested objects/arrays (`parentId`, `nodeId`, `nodeIds[]`).
-- Ops run **sequentially** in the plugin (no parallel-crash risk).
-- The result is compact (`ids` + `errors`), not a verbose node dump.
-- A failing op is recorded in `errors[]` and the batch continues (pass `stopOnError: true` to halt).
-
-Tips: build one repeated element (card/step/review), then `clone_node` + `set_text_content`
-for the rest; keep image-heavy batches smaller; validate with one `export_node_as_image`.
+`@ref` resolves anywhere a node id is expected (incl. nested objects/arrays). Ops run
+sequentially (no parallel crashes). Result is compact `ids` + `errors`. `set_image_fill`
+works in a batch too — the server pre-encodes `imagePath`/`imageUrl` before sending.
 
 ## Tools
 
 Reads: `get_document_info`, `get_selection`, `get_node_info`, `get_nodes_info`, `read_my_design`, `scan_text_nodes`, `scan_nodes_by_types`, `get_styles`, `get_local_components`, `get_annotations`, `get_reactions`, `export_node_as_image`.
-
-Create / edit: `create_frame`, `create_text`, `create_rectangle`, `create_ellipse`, `create_svg`, `create_component_instance`, `clone_node`, `insert_child`, `move_node`, `resize_node`, `delete_node`, `delete_multiple_nodes`.
-
+Create/edit: `create_frame`, `create_text`, `create_rectangle`, `create_ellipse`, `create_svg`, `create_component_instance`, `clone_node`, `insert_child`, `move_node`, `resize_node`, `delete_node`, `delete_multiple_nodes`.
 Style: `set_fill_color`, `set_stroke_color`, `set_gradient_fill`, `set_effect`, `set_corner_radius`, `set_image_fill`, `set_font_name`, `set_text_content`, `set_multiple_text_contents`.
-
 Layout: `set_layout_mode`, `set_layout_sizing`, `set_padding`, `set_item_spacing`, `set_axis_align`.
-
-Batch: **`batch_ops`** (run many of the above in one round-trip).
-
-Channel / misc: `join_channel`, annotations, connectors, focus/selection helpers.
-
-> `set_fill_color` accepts both `{ nodeId, r, g, b, a }` and `{ nodeId, color: { … } }`, so it works identically inside `batch_ops`. `set_image_fill` also works inside `batch_ops` (the server pre-encodes the image).
+Batch: **`batch_ops`**. Plus `join_channel`, annotations, connectors, focus/selection helpers.
 
 ## Testing
 
 ```bash
 bun test               # coverage.mjs — connection-free: every MCP command has a plugin handler
-bun test:smoke <chan>  # smoke.mjs   — live: drives the plugin, exercises batch_ops + ~18 commands, cleans up
+bun test:smoke <chan>  # smoke.mjs   — live: drives the plugin, exercises batch_ops + ~18 commands
 ```
-
-`coverage.mjs` needs nothing running. `smoke.mjs` needs the relay + Figma + plugin on a channel (pass the channel id), with Figma focused.
 
 ## Privacy
 
-No telemetry. The plugin sends nothing to any external service — its only network use is
-the local relay (`ws://localhost:3055`). No file content or personal data leaves your machine.
-
-## Before you publish
-
-A few placeholders to personalize (search `TODO`):
-
-- [ ] `package.json` — (done)
-- [ ] `LICENSE` — (done)
-- [ ] `src/figma_plugin/manifest.json` — set the plugin `name`; Figma assigns a new `id` when you publish to Community.
-- [ ] Publish the plugin via Figma desktop → *Plugins → Development → Publish*.
-- [ ] `npm publish` the server with `bun run pub:release` (after `npm login`).
+No telemetry. The plugin's only network use is the local relay (`ws://localhost:3055`).
+No file content or personal data leaves your machine.
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+MIT — see [LICENSE](./LICENSE). Contributions welcome.
