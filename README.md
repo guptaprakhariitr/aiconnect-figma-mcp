@@ -1,27 +1,25 @@
 <div align="center">
 
-<img src="assets/aiconnect-icon-128.png" width="88" alt="AIConnect logo" />
+<img src="assets/aiconnect-icon-128.png" width="84" alt="AIConnect logo" />
 
 # AIConnect for Figma
 
-**Drive Figma from any AI agent — build entire pages in one call.**
+### Drive Figma from any AI agent — design whole pages in a single call.
+
 Open-source · fully local · works with Claude Code, Cursor, or any MCP client.
 
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](./LICENSE)
-[![Commercial license](https://img.shields.io/badge/Commercial-license%20available-1e7a7f.svg)](#-license--commercial-use)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-1e7a7f.svg)](./LICENSE)
+[![Commercial license](https://img.shields.io/badge/Commercial-license%20available-f0a868.svg)](#-license--commercial-use)
 [![MCP](https://img.shields.io/badge/Model%20Context%20Protocol-compatible-8A2BE2.svg)](https://modelcontextprotocol.io)
-[![Made with TypeScript](https://img.shields.io/badge/TypeScript-3178c6.svg?logo=typescript&logoColor=white)](#)
-[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#contributing)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178c6.svg?logo=typescript&logoColor=white)](#)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#-contributing)
 [![Stars](https://img.shields.io/github/stars/guptaprakhariitr/aiconnect-figma-mcp?style=social)](https://github.com/guptaprakhariitr/aiconnect-figma-mcp)
 
-![AIConnect cover](assets/aiconnect-cover-1920x960.png)
+<img src="assets/aiconnect-cover-1920x960.png" width="100%" alt="AIConnect cover" />
 
 </div>
 
-AIConnect is an **MCP (Model Context Protocol) server + Figma plugin** that lets an AI
-agent read and edit a live Figma file — create frames, text, auto‑layout, fills,
-gradients, effects and SVGs, import images, clone nodes, and **assemble whole pages in a
-single round‑trip** with `batch_ops`. It runs entirely on your machine.
+AIConnect is an **MCP server + Figma plugin** that lets an AI agent read and edit a **live Figma file** — create frames, text, auto‑layout, fills, gradients, effects, SVGs, import images, clone nodes, and **assemble entire pages in one round‑trip** with `batch_ops`. It runs entirely on your machine and talks only to a relay on `localhost`.
 
 > ⭐ If this saves you time, a star helps other people find it.
 
@@ -29,32 +27,31 @@ single round‑trip** with `batch_ops`. It runs entirely on your machine.
 
 ## ✨ See it in action
 
-> An AI agent designing a full landing page in Figma, live, through AIConnect:
+> No hand‑placed layers. An agent was asked to design a hard‑water hair‑care brand and built it all **directly in Figma** through AIConnect — a landing page, a product page, and four full design‑direction boards, each assembled with `batch_ops`.
 
-<!-- SCREENSHOT:OUTPUT -->
+<div align="center">
+<img src="assets/screenshots/output.png" width="100%" alt="A full brand designed by an AI agent in Figma through AIConnect — landing page, product page, and design-direction boards" />
+</div>
 
 ---
 
 ## Why AIConnect
 
-| | |
+|  |  |
 |---|---|
-| 🔒 **Local & private** | Talks only to a relay on `localhost`. No telemetry, no third‑party servers, nothing leaves your machine. |
+| 🔒 **Local & private** | Talks only to a relay on `localhost`. No telemetry, no third‑party servers — nothing leaves your machine. |
 | 🤝 **Client‑agnostic** | Use it with Claude Code, Cursor, or any MCP client — not tied to one editor. |
-| ⚡ **`batch_ops`** | Build an entire page/section in **one** round‑trip instead of 100+ individual calls. |
-| 🎨 **Rich commands** | Images, fonts, gradients, effects, SVG, auto‑layout, clone, reorder — ~45 tools. |
+| ⚡ **`batch_ops`** | Build a whole page/section in **one** round‑trip instead of 100+ individual calls. |
+| 🎨 **Rich commands** | Images, fonts, gradients, effects, SVG, auto‑layout, clone, reorder — **~45 tools**. |
 | 🛠️ **Open & hackable** | AGPL‑3.0, ~one file to extend. Wire it into your own agent skills. |
 
-> **Note on Figma's official MCP.** Figma now ships a first‑party MCP (`use_figma`).
-> AIConnect is an **independent, open‑source, local** alternative — client‑agnostic,
-> scriptable, and built around the one‑round‑trip `batch_ops` for fast page building. Use
-> whichever fits your workflow, or both.
+> **Note on Figma's official MCP.** Figma now ships a first‑party MCP (`use_figma`). AIConnect is an **independent, open‑source, local** alternative — client‑agnostic, scriptable, and built around the one‑round‑trip `batch_ops` for fast page building. Use whichever fits your workflow, or both.
 
 ---
 
 ## 🚀 Quickstart (~2 minutes)
 
-**Prerequisites:** [Bun](https://bun.sh) and the Figma desktop app.
+**Prerequisites:** [Bun](https://bun.sh) and the Figma **desktop** app.
 
 ### 1 · Install & build
 
@@ -64,32 +61,33 @@ cd aiconnect-figma-mcp
 bun install && bun run build
 ```
 
-### 2 · Start the local relay (leave running)
+### 2 · Start the local relay — leave it running
 
 ```bash
-bun socket          # → WebSocket server running on port 3055
+bun socket          # → WebSocket relay running on port 3055
 ```
 
 ### 3 · Import the plugin into Figma
 
-In Figma desktop: **Plugins → Development → Import plugin from manifest…** and choose
-`src/figma_plugin/manifest.json`.
+In the Figma desktop app, open the actions menu (or **right‑click → Plugins**) → **Development → Import plugin from manifest…** and choose [`src/figma_plugin/manifest.json`](src/figma_plugin/manifest.json).
 
-<!-- SCREENSHOT:IMPORT -->
+<div align="center">
+<img src="assets/screenshots/step-import-manifest.png" width="560" alt="Figma → Plugins & widgets → Import from manifest" />
+</div>
 
 ### 4 · Run the plugin & copy the channel
 
-Run **Plugins → Development → AIConnect for Figma**. The plugin connects and shows a
-**channel id** — copy it.
+Run **Plugins → Development → AIConnect for Figma**. The panel connects to the relay and shows a **channel id** — copy it.
 
-<!-- SCREENSHOT:PLUGIN -->
+<div align="center">
+<img src="assets/screenshots/step-plugin-connected.png" width="420" alt="AIConnect plugin connected, showing the channel id" />
+</div>
 
 ### 5 · Point your agent at the MCP server
 
-Add this to your MCP client config (`.mcp.json` for Claude Code, `mcp.json` for Cursor) —
-or just run `bun setup` to write it for you:
+Add this to your MCP client config — `.mcp.json` for Claude Code, `mcp.json` for Cursor. Use an **absolute path** to the built server:
 
-```json
+```jsonc
 {
   "mcpServers": {
     "AIConnect": {
@@ -100,20 +98,19 @@ or just run `bun setup` to write it for you:
 }
 ```
 
+> 💡 Or just run **`bun setup`** from the repo — it builds the server and writes a correctly‑pathed `.mcp.json` for you.
+
 ### 6 · Connect and build
 
-In your agent, call **`join_channel`** with the id from the plugin, then ask it to design.
-That's it. 🎉
+In your agent, call **`join_channel`** with the id from the plugin, then ask it to design. That's it. 🎉
 
-> 💡 Keep the Figma window focused while the agent works — Figma pauses background plugins
-> (which shows up as command timeouts).
+> 💡 Keep the Figma window **focused** while the agent works — Figma pauses background plugins, which surfaces as command timeouts.
 
 ---
 
 ## ⚡ `batch_ops` — build pages in one call
 
-The headline feature. Children reference parents created earlier in the same batch via
-`@ref` placeholders, so a whole layout goes over the wire once:
+The headline feature. Children reference parents created earlier in the **same** batch via `@ref` placeholders, so a whole layout goes over the wire once:
 
 ```jsonc
 batch_ops({
@@ -130,17 +127,19 @@ batch_ops({
 // → { ok: true, ids: { page: "12:3", title: "12:4" }, errors: [] }
 ```
 
-- `@ref` resolves anywhere a node id is expected (incl. nested objects/arrays).
+- `@ref` resolves anywhere a node id is expected (including nested objects/arrays).
 - Ops run **sequentially** in the plugin — no parallel‑crash risk.
 - Returns a compact `ids` + `errors` map, not a verbose node dump.
-- `set_image_fill` works in a batch too — the server pre‑encodes `imagePath`/`imageUrl`.
+- `set_image_fill` works in a batch too — the server pre‑encodes `imagePath` / `imageUrl`.
 
 ---
 
 ## 🧰 Tools
 
 <details>
-<summary><b>~45 commands across reads, create/edit, style, layout & batch</b></summary>
+<summary><b>~45 commands across reads, create/edit, style, layout &amp; batch</b></summary>
+
+<br/>
 
 **Reads** — `get_document_info`, `get_selection`, `get_node_info`, `get_nodes_info`, `read_my_design`, `scan_text_nodes`, `scan_nodes_by_types`, `get_styles`, `get_local_components`, `get_annotations`, `get_reactions`, `export_node_as_image`
 
@@ -170,50 +169,49 @@ AI agent (MCP client)
    Your Figma file
 ```
 
-The **MCP server** (`src/aiconnect_mcp/server.ts`) exposes tools; the **relay**
-(`src/socket.ts`) brokers messages on port 3055; the **plugin** (`src/figma_plugin/`) runs
-inside Figma. The agent and plugin join the same **channel**.
+The **MCP server** ([`src/aiconnect_mcp/server.ts`](src/aiconnect_mcp/server.ts)) exposes the tools; the **relay** ([`src/socket.ts`](src/socket.ts)) brokers messages on port 3055; the **plugin** ([`src/figma_plugin/`](src/figma_plugin/)) runs inside Figma. The agent and the plugin join the same **channel**.
 
 ---
 
 ## 🧪 Testing
 
 ```bash
-bun test               # connection-free: every MCP command has a matching plugin handler
-bun test:smoke <chan>  # live: drives the plugin through batch_ops + ~18 commands
+bun run test               # connection-free: every MCP command has a matching plugin handler
+bun run test:smoke <chan>  # live: drives the plugin through batch_ops + ~18 commands
 ```
+
+> ℹ️ Use `bun run test` (not `bun test`) — bare `bun test` invokes Bun's built‑in test runner, which finds no spec files here.
 
 ---
 
 ## ❓ FAQ
 
-**How is this different from Figma's official MCP?** AIConnect is open‑source, runs fully
-locally, works with any MCP client, and centers on `batch_ops` for fast multi‑node builds.
+**How is this different from Figma's official MCP?**
+AIConnect is open‑source, runs fully locally, works with any MCP client, and centers on `batch_ops` for fast multi‑node builds.
 
-**Is my data safe?** Yes — the plugin's only network use is `ws://localhost:3055` on your
-own machine. No telemetry, no external calls.
+**Is my data safe?**
+Yes. The plugin's only network use is `ws://localhost:3055` on your own machine. No telemetry, no external calls.
 
-**Which agents work?** Anything that speaks MCP — Claude Code, Cursor, and others.
+**Which agents work?**
+Anything that speaks MCP — Claude Code, Cursor, and others.
 
-**Why do commands sometimes time out?** Figma pauses plugins whose window isn't focused.
-Keep Figma in front while the agent works.
+**Why do commands sometimes time out?**
+Figma pauses plugins whose window isn't focused. Keep Figma in front while the agent works.
 
 ---
 
 ## 🤝 Contributing
 
-PRs welcome. By contributing you agree your contribution may also be offered under the
-commercial license (see below). Run `bun test` before opening a PR.
+PRs welcome. By contributing you agree your contribution may also be offered under the commercial license (see below). Run `bun run test` before opening a PR.
 
 ---
 
 ## 📄 License & commercial use
 
-AIConnect is licensed under the **GNU AGPL‑3.0** (see [LICENSE](./LICENSE)). You may use,
-modify, and self‑host it freely; if you run a modified version as a network service, the
-AGPL requires you to release your source under the same license.
+AIConnect is licensed under the **GNU AGPL‑3.0** (see [LICENSE](./LICENSE)). You may use, modify, and self‑host it freely; if you run a modified version as a network service, the AGPL requires you to release your source under the same license.
 
-**Want to use AIConnect in a closed‑source product or hosted service without AGPL
-obligations?** A separate commercial license is available — **prakshatechnologies@gmail.com**.
+**Want to use AIConnect in a closed‑source product or hosted service without AGPL obligations?** A separate commercial license is available — **prakshatechnologies@gmail.com**.
 
 Builds on prior MIT‑licensed work — see [NOTICE](./NOTICE).
+</content>
+</invoke>

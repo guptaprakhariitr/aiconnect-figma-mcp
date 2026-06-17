@@ -19,8 +19,8 @@ bun run build            # Build MCP server (tsup → dist/)
 bun run dev              # Build in watch mode
 bun socket               # Start WebSocket relay server (port 3055)
 bun run start            # Run built MCP server
-bun test                 # Connection-free coverage test (tests/coverage.mjs)
-bun test:smoke <chan>    # Live smoke test against the plugin (tests/smoke.mjs)
+bun run test             # Connection-free coverage test (tests/coverage.mjs)
+bun run test:smoke <chan> # Live smoke test against the plugin (tests/smoke.mjs)
 bun setup                # Install + write .mcp.json
 ```
 
