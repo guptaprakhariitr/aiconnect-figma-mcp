@@ -70,7 +70,16 @@ Most of these are behind a paid Figma seat or a paid plugin. With AIConnect they
 
 ## ⚡ 2‑minute quickstart
 
-**Prerequisites:** [Node ≥ 18](https://nodejs.org) (or [Bun](https://bun.sh)) and the **[Figma desktop app](https://www.figma.com/downloads/)** (free). The browser version of Figma **cannot import development plugins**, so the desktop app is required.
+You install **two small pieces** (both free, both local):
+
+| Piece | What it is | How you get it |
+|---|---|---|
+| 🧠 **MCP server** | what your AI agent talks to | `npx` — nothing to clone |
+| 🎨 **Figma plugin** | what actually edits your file | one‑click zip from [Releases](https://github.com/guptaprakhariitr/aiconnect-figma-mcp/releases/latest) |
+
+A tiny **relay** (also via `npx`) connects them over `localhost`.
+
+**Prerequisites:** [Node ≥ 18](https://nodejs.org) (or [Bun](https://bun.sh)) and the free **[Figma desktop app](https://www.figma.com/downloads/)** (the browser version can't import plugins).
 
 ### 1 · Point your agent at the MCP server
 
@@ -95,15 +104,11 @@ npx -y aiconnect-figma-relay     # → relay running on ws://localhost:3055
 
 The relay runs on plain **Node** — no Bun required.
 
-### 3 · Import the plugin into Figma
+### 3 · Install the Figma plugin
 
-The plugin ships inside the npm package. After step 1, print its path with:
+**[⬇️ Download `aiconnect-figma-plugin.zip`](https://github.com/guptaprakhariitr/aiconnect-figma-mcp/releases/latest)** from the latest release and unzip it.
 
-```bash
-node -e "console.log(require.resolve('aiconnect-figma-mcp/src/figma_plugin/manifest.json'))"
-```
-
-Then in the **Figma desktop app** (not the browser): actions menu (or **right‑click → Plugins**) → **Development → Import plugin from manifest…** and choose that `manifest.json`.
+Then in the **Figma desktop app** (not the browser): main menu → **Plugins → Development → Import plugin from manifest…** and pick the `manifest.json` inside the unzipped folder. You only do this once.
 
 <div align="center">
 <img src="assets/screenshots/step-import-manifest.png" width="560" alt="Figma → Plugins & widgets → Import from manifest" />
