@@ -4,13 +4,15 @@ FROM oven/bun:latest
 # Set the working directory in the container
 WORKDIR /app
 
-# Copy the current directory contents into the container at /app
-COPY package*.json ./
-
+# Install dependencies first (better layer caching)
+COPY package*.json bun.lock* ./
 RUN bun install
 
-# Expose the port on which the API will listen
+# Copy the rest of the source (server, plugin, relay)
+COPY . .
+
+# Expose the local relay port
 EXPOSE 3055
 
-# Run the server when the container launches
+# Run the MCP server on stdio (responds to introspection without a live relay)
 CMD ["bun", "src/aiconnect_mcp/server.ts"]
