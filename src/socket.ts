@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (c) 2026 Prakhar Gupta. Commercial license available — see README.
+// Copyright (c) 2026 Prakhar Gupta.
 
 import { Server, ServerWebSocket } from "bun";
 

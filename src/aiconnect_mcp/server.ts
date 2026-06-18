@@ -1,12 +1,18 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (c) 2026 Prakhar Gupta. Commercial license available — see README.
+// Copyright (c) 2026 Prakhar Gupta.
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import WebSocket from "ws";
 import { v4 as uuidv4 } from "uuid";
+import {
+  generatePalette, checkContrast, suggestFonts, generateTheme,
+  listBrandPresets, buildBrand, searchIcons, fetchIconSvg, searchImages,
+  generateContent, parseTokensFile,
+} from "./design_intel.js";
+import { readFileSync } from "node:fs";
 
 // Define TypeScript interfaces for Figma responses
 interface FigmaResponse {
@@ -75,11 +81,52 @@ const pendingRequests = new Map<string, {
 // Track which channel each client is in
 let currentChannel: string | null = null;
 
-// Create MCP server
-const server = new McpServer({
-  name: "AIConnectMCP",
-  version: "1.0.0",
-});
+// Create MCP server. The `instructions` block is surfaced to the agent on
+// connect — it teaches the high-leverage workflow so the tools are used well,
+// not one-at-a-time. This is the single biggest usability lever for an MCP.
+const server = new McpServer(
+  {
+    name: "AIConnectMCP",
+    version: "1.0.0",
+  },
+  {
+    instructions: [
+      "AIConnect drives a LIVE Figma file from this agent. Work in this loop:",
+      "",
+      "1. ORIENT — call `get_status` first. It confirms the connection and shows the",
+      "   document, current page, selection, and which APIs (variables) are available.",
+      "   If it errors with 'join a channel', call `join_channel` with the code shown in the plugin UI.",
+      "",
+      "2. BUILD IN BULK — prefer `batch_ops` over individual create_* calls. Send a whole",
+      "   section/page in ONE round-trip: each op is { ref?, command, params? }; reference",
+      "   nodes made earlier in the same batch with \"@ref\" (e.g. parentId:\"@hero\"). This is",
+      "   10-100x fewer round-trips than placing layers one at a time. Always set auto-layout",
+      "   (set_layout_mode + set_padding + set_item_spacing) so designs are responsive.",
+      "   PERF: always parent text into a frame (insert_child) — loose text on a busy page is ~10x slower.",
+      "   For large/nested layouts, create+insert all children first and set the parent's auto-layout LAST",
+      "   (one reflow instead of one per insert).",
+      "",
+      "3. VERIFY VISUALLY — after building, call `get_page_snapshot` to SEE the result and",
+      "   self-correct. Use `get_console_logs` to debug anything that failed.",
+      "",
+      "4. DESIGN TOKENS — read with `get_variables`; create with `create_variable_collection`",
+      "   then `create_variable`; apply with `bind_variable` so nodes follow tokens. Export to",
+      "   code with `export_tokens` (dtcg | css | tailwind).",
+      "",
+      "5. DEV HANDOFF — `get_css` returns Dev Mode-equivalent CSS + spec for any node (no paid Dev seat).",
+      "",
+      "6. DESIGN INTELLIGENCE (local, keyless) — don't guess at colors/fonts:",
+      "   - `apply_brand` sets up a whole brand identity (color light/dark + radius + spacing tokens) in one call",
+      "     from a preset ('fintech-trust', 'luxury-noir', …), a famous brand name ('stripe'), or a custom color.",
+      "   - `generate_palette` / `generate_theme` for OKLCH scales + token systems; `check_contrast` to keep text accessible (with auto-fix).",
+      "   - `suggest_fonts` for vetted pairings; `search_icons`+`insert_icon` for 200k+ icons; `search_images` → `set_image_fill` for photos.",
+      "",
+      "Notes: everything is local (no telemetry). Some Figma features are paid-plan-gated at",
+      "the runtime level (e.g. multiple variable modes) — those calls degrade gracefully and",
+      "report what was skipped rather than failing the whole operation.",
+    ].join("\n"),
+  }
+);
 
 // Add command line argument parsing
 const args = process.argv.slice(2);
@@ -2827,6 +2874,15 @@ This detailed process ensures you correctly interpret the reaction data, prepare
 
 // Define command types and parameters
 type FigmaCommand =
+  | "get_css"
+  | "get_status"
+  | "get_console_logs"
+  | "get_page_snapshot"
+  | "get_variables"
+  | "create_variable_collection"
+  | "create_variable"
+  | "set_variable_value"
+  | "bind_variable"
   | "set_font_name"
   | "set_image_fill"
   | "insert_child"
@@ -3026,6 +3082,81 @@ type CommandParams = {
 
 };
 
+
+// Format local variables + color styles as design-token code (dtcg | css | tailwind).
+function formatTokens(fmt: string, vars: any, styles: any): string {
+  const collections: any[] = (vars && vars.collections) || [];
+  const variables: any[] = (vars && vars.variables) || [];
+  const colMap: Record<string, any> = {};
+  collections.forEach((c) => (colMap[c.id] = c));
+  const byId: Record<string, any> = {};
+  variables.forEach((v) => (byId[v.id] = v));
+
+  const resolve = (v: any): any => {
+    let cur = v, guard = 0;
+    while (cur && guard++ < 10) {
+      const col = colMap[cur.collectionId];
+      const modeId = col ? col.defaultModeId : Object.keys(cur.valuesByMode || {})[0];
+      let val = cur.valuesByMode ? cur.valuesByMode[modeId] : undefined;
+      if (val && typeof val === "object" && val.type === "VARIABLE_ALIAS" && byId[val.id]) { cur = byId[val.id]; continue; }
+      return val;
+    }
+    return undefined;
+  };
+  const h = (n: number) => Math.round(Math.max(0, Math.min(1, n)) * 255).toString(16).padStart(2, "0");
+  const toCss = (val: any, type: string): string => {
+    if (type === "COLOR" && val && typeof val === "object") {
+      const a = val.a == null ? 1 : val.a;
+      return a < 1 ? `rgba(${Math.round(val.r * 255)}, ${Math.round(val.g * 255)}, ${Math.round(val.b * 255)}, ${+a.toFixed(3)})`
+                   : `#${h(val.r)}${h(val.g)}${h(val.b)}`;
+    }
+    return String(val);
+  };
+  const dtcgType = (t: string) => (t === "COLOR" ? "color" : t === "FLOAT" ? "number" : t === "BOOLEAN" ? "boolean" : "string");
+  const slug = (s: string) => s.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase();
+
+  // Unified token list: variables + color styles (styles fill the gap for free
+  // users who theme with styles rather than variables).
+  type Tok = { name: string; type: string; value: any; cssValue: string };
+  const tokens: Tok[] = [];
+  for (const v of variables) {
+    const val = resolve(v);
+    if (val === undefined) continue;
+    tokens.push({ name: v.name, type: v.resolvedType, value: val, cssValue: toCss(val, v.resolvedType) });
+  }
+  for (const c of (styles && styles.colors) || []) {
+    const p = c.paint;
+    if (!p || p.type !== "SOLID" || !p.color) continue;
+    const col = { ...p.color, a: p.opacity == null ? 1 : p.opacity };
+    tokens.push({ name: c.name, type: "COLOR", value: col, cssValue: toCss(col, "COLOR") });
+  }
+
+  if (fmt === "css") {
+    const lines = tokens.map((t) => `  --${slug(t.name)}: ${t.cssValue};`);
+    return `:root {\n${lines.join("\n")}\n}`;
+  }
+  if (fmt === "tailwind") {
+    const colors: Record<string, string> = {};
+    const spacing: Record<string, string> = {};
+    for (const t of tokens) {
+      if (t.type === "COLOR") colors[slug(t.name)] = t.cssValue;
+      else if (t.type === "FLOAT") spacing[slug(t.name)] = `${t.value}px`;
+    }
+    return `/** tailwind.config.js — theme.extend */\nmodule.exports = ${JSON.stringify({ theme: { extend: { colors, spacing } } }, null, 2)};`;
+  }
+  // dtcg (default): nested W3C Design Tokens object by "/" path
+  const root: any = {};
+  for (const t of tokens) {
+    const parts = t.name.split("/").map((s) => s.trim()).filter(Boolean);
+    let node = root;
+    for (let i = 0; i < parts.length - 1; i++) node = node[parts[i]] || (node[parts[i]] = {});
+    node[parts[parts.length - 1]] = {
+      $type: dtcgType(t.type),
+      $value: t.type === "COLOR" ? t.cssValue : t.value,
+    };
+  }
+  return JSON.stringify(root, null, 2);
+}
 
 // Helper function to process Figma node responses
 function processFigmaNodeResponse(result: unknown): any {
@@ -3254,6 +3385,486 @@ function sendCommandToFigma(
     ws.send(JSON.stringify(request));
   });
 }
+
+// Status / diagnostics — orient the agent in one call
+server.tool(
+  "get_status",
+  "Health & context probe: editor type, document/page names, selection, page count, " +
+    "available APIs (variables), buffered console lines, and plugin version. Call this first to confirm the live connection.",
+  {},
+  async () => {
+    try {
+      const result = await sendCommandToFigma("get_status");
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error getting status: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+// Console capture — pull plugin-side logs/errors for debugging
+server.tool(
+  "get_console_logs",
+  "Return recent plugin-side console output (console.log/info/warn/error captured in a ring buffer). " +
+    "Use to debug failing operations or inspect what scripts printed. Fully local — runs inside the Figma plugin.",
+  {
+    limit: z.number().optional().describe("Max entries to return (newest last), default 100"),
+    level: z.enum(["log", "info", "warn", "error", "debug"]).optional().describe("Filter by level"),
+    clear: z.boolean().optional().describe("Clear the buffer after reading"),
+  },
+  async ({ limit, level, clear }: any) => {
+    try {
+      const result = await sendCommandToFigma("get_console_logs", { limit, level, clear });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error getting console logs: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+// Visual snapshot — see the current design for a feedback loop
+server.tool(
+  "get_page_snapshot",
+  "Capture a PNG of the current context for visual feedback. Targets, in order: explicit nodeId, " +
+    "current selection, else the first top-level frame on the page. Returns the image so you can SEE the result of your edits.",
+  {
+    nodeId: z.string().optional().describe("Node to capture; omit to use selection or first top-level frame"),
+    scale: z.number().optional().describe("Export scale (default 1)"),
+  },
+  async ({ nodeId, scale }: any) => {
+    try {
+      const result: any = await sendCommandToFigma("get_page_snapshot", { nodeId, scale });
+      return {
+        content: [
+          { type: "image", data: result.imageData, mimeType: result.mimeType || "image/png" },
+          { type: "text", text: JSON.stringify({ nodeId: result.nodeId, name: result.name, type: result.type, scale: result.scale }) },
+        ],
+      };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error capturing snapshot: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+// ---- Variables / design tokens ---------------------------------------------
+server.tool(
+  "get_variables",
+  "List every local variable collection and its variables, including per-mode values. " +
+    "Use to read an existing design-token system before extending it.",
+  {},
+  async () => {
+    try {
+      const result = await sendCommandToFigma("get_variables");
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error getting variables: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "create_variable_collection",
+  "Create a variable (design-token) collection. Optionally pass modes (e.g. ['Light','Dark']); the first renames the default mode.",
+  {
+    name: z.string().describe("Collection name, e.g. 'Color' or 'Spacing'"),
+    modes: z.array(z.string()).optional().describe("Mode names; first renames the default mode, rest are added"),
+  },
+  async ({ name, modes }: any) => {
+    try {
+      const result = await sendCommandToFigma("create_variable_collection", { name, modes });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error creating collection: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "create_variable",
+  "Create a design-token variable in a collection. resolvedType: COLOR | FLOAT | STRING | BOOLEAN. " +
+    "Set value (applied to default mode) or modeValues ({modeId: value}) for multi-mode tokens. COLOR values are {r,g,b,a} 0-1.",
+  {
+    name: z.string().describe("Variable name, e.g. 'brand/primary'"),
+    collectionId: z.string().describe("Target collection id (from get_variables or create_variable_collection)"),
+    resolvedType: z.enum(["COLOR", "FLOAT", "STRING", "BOOLEAN"]).describe("Variable type"),
+    value: z.any().optional().describe("Value for the default mode"),
+    modeValues: z.record(z.any()).optional().describe("Per-mode values: { modeId: value }"),
+  },
+  async ({ name, collectionId, resolvedType, value, modeValues }: any) => {
+    try {
+      const result = await sendCommandToFigma("create_variable", { name, collectionId, resolvedType, value, modeValues });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error creating variable: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "set_variable_value",
+  "Set/overwrite a variable's value for a mode (default mode if modeId omitted). COLOR values are {r,g,b,a} 0-1.",
+  {
+    variableId: z.string().describe("Variable id"),
+    value: z.any().describe("New value (type matches the variable's resolvedType)"),
+    modeId: z.string().optional().describe("Target mode; omit for the collection's default mode"),
+  },
+  async ({ variableId, value, modeId }: any) => {
+    try {
+      const result = await sendCommandToFigma("set_variable_value", { variableId, value, modeId });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error setting variable value: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "bind_variable",
+  "Bind a variable to a node property so the node follows the token. field 'fill'/'fills' binds the first fill's color; " +
+    "any other field uses Figma's bindable properties (e.g. width, height, cornerRadius, opacity, characters, itemSpacing).",
+  {
+    nodeId: z.string().describe("Node to bind"),
+    field: z.string().describe("Property to bind, e.g. 'fills', 'cornerRadius', 'width'"),
+    variableId: z.string().describe("Variable id to bind to that property"),
+  },
+  async ({ nodeId, field, variableId }: any) => {
+    try {
+      const result = await sendCommandToFigma("bind_variable", { nodeId, field, variableId });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error binding variable: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+// Dev Mode-equivalent inspection (free via plugin API — no paid Dev seat)
+server.tool(
+  "get_css",
+  "Get Dev Mode-equivalent CSS + a compact dev spec (size, position, auto-layout, radius, typography) for a node. " +
+    "Replicates the paid Dev Mode 'copy as CSS' / inspect panel using the local plugin API — no Dev seat required.",
+  {
+    nodeId: z.string().describe("Node to inspect"),
+  },
+  async ({ nodeId }: any) => {
+    try {
+      const result = await sendCommandToFigma("get_css", { nodeId });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error getting CSS: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+// Token export / sync — format local variables + color styles as code
+server.tool(
+  "export_tokens",
+  "Export the document's design tokens (local variables + color styles) as code. " +
+    "format: 'dtcg' (W3C Design Tokens JSON), 'css' (CSS custom properties), or 'tailwind' (theme snippet). " +
+    "Replicates paid token-sync tooling locally — reads everything via the plugin API, formats in Node.",
+  {
+    format: z.enum(["dtcg", "css", "tailwind"]).optional().describe("Output format (default dtcg)"),
+  },
+  async ({ format }: any) => {
+    try {
+      const fmt = format || "dtcg";
+      const vars: any = await sendCommandToFigma("get_variables");
+      const styles: any = await sendCommandToFigma("get_styles");
+      const text = formatTokens(fmt, vars, styles);
+      return { content: [{ type: "text", text }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error exporting tokens: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+// ============================================================================
+// Design-intelligence tools — palettes, contrast/a11y, fonts, themes, brand
+// identities, icons, stock images. Zero-dependency & keyless (fully local).
+// ============================================================================
+
+server.tool(
+  "generate_palette",
+  "Generate a cohesive color system from a seed color: harmony sets (complementary/analogous/triadic) " +
+    "plus a perceptual 50-950 tonal scale (OKLCH, Tailwind/Radix-style) and a hue-matched gray ramp. " +
+    "Each color includes hex + figmaRGB (ready for set_fill_color/create_variable) + WCAG contrast on white/black.",
+  {
+    seed: z.string().describe("Seed color: hex (#635BFF), rgb(), or a common name"),
+    harmonies: z.array(z.enum(["complementary", "analogous", "triadic", "tetradic", "split-complementary"])).optional(),
+    includeGray: z.boolean().optional().describe("Include a hue-matched neutral ramp (default true)"),
+  },
+  async ({ seed, harmonies, includeGray }: any) => {
+    try {
+      return { content: [{ type: "text", text: JSON.stringify(generatePalette(seed, { harmonies, includeGray })) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error generating palette: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "check_contrast",
+  "Check WCAG 2.1 contrast between a foreground and background color: ratio + AA/AAA pass for normal & large text. " +
+    "If it fails, auto-suggests the nearest accessible color (hue/chroma preserved). Use before shipping text colors.",
+  {
+    foreground: z.string().describe("Foreground/text color"),
+    background: z.string().describe("Background color"),
+    fixTarget: z.enum(["AA", "AAA"]).optional().describe("Target for the auto-fix suggestion (default AA)"),
+    autoFix: z.boolean().optional().describe("Suggest an accessible color if failing (default true)"),
+  },
+  async ({ foreground, background, fixTarget, autoFix }: any) => {
+    try {
+      return { content: [{ type: "text", text: JSON.stringify(checkContrast(foreground, background, { fixTarget, autoFix })) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error checking contrast: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "suggest_fonts",
+  "Recommend heading+body font pairings for a vibe/brand (e.g. 'modern fintech', 'editorial luxury'). " +
+    "Returns curated Google Fonts pairings as ready-to-apply { family, style } (Google Fonts are bundled in Figma; apply with set_font_name).",
+  {
+    vibe: z.string().describe("Brand/vibe, e.g. 'playful consumer app' or 'luxury editorial'"),
+    count: z.number().optional().describe("Number of pairings (default 3)"),
+  },
+  async ({ vibe, count }: any) => {
+    try {
+      return { content: [{ type: "text", text: JSON.stringify(suggestFonts(vibe, count || 3)) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error suggesting fonts: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "generate_theme",
+  "Generate a FULL design-token system from a seed color: semantic color tokens (background/surface/border/primary/text) " +
+    "for light & dark modes, a radius scale, a spacing scale, and (if a vibe is given) font choices. " +
+    "Output maps 1:1 onto create_variable_collection/create_variable. For one-shot brand setup, prefer apply_brand.",
+  {
+    seed: z.string().describe("Seed/brand color"),
+    appearance: z.enum(["light", "dark", "both"]).optional().describe("Modes to generate (default both)"),
+    radius: z.enum(["none", "small", "medium", "large"]).optional(),
+    vibe: z.string().optional().describe("Optional vibe to also pick fonts"),
+  },
+  async ({ seed, appearance, radius, vibe }: any) => {
+    try {
+      return { content: [{ type: "text", text: JSON.stringify(generateTheme(seed, { appearance, radius, vibe })) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error generating theme: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "list_brand_presets",
+  "List built-in brand-identity presets (e.g. 'fintech-trust', 'luxury-noir', 'eco-natural') and a reference of famous brand color codes " +
+    "(stripe, spotify, linear, …). Feed a preset id or brand name to apply_brand.",
+  {},
+  async () => {
+    try {
+      return { content: [{ type: "text", text: JSON.stringify(listBrandPresets()) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error listing presets: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "apply_brand",
+  "One-shot brand identity → live Figma design tokens. Resolve a brand from a preset id, a famous brand name, or a custom primary color " +
+    "(+ optional vibe/fonts/radius), generate a full theme, and (by default) MATERIALIZE it as Figma variable collections (color light/dark, radius, spacing). " +
+    "Returns the created collection/variable ids + recommended fonts. Free Figma plans cap color at 1 mode — the dark mode is skipped automatically.",
+  {
+    preset: z.string().optional().describe("Preset id, e.g. 'fintech-trust' (see list_brand_presets)"),
+    brand: z.string().optional().describe("Famous brand name to seed from, e.g. 'stripe', 'spotify'"),
+    primary: z.string().optional().describe("Custom primary color (hex/rgb/name)"),
+    vibe: z.string().optional(),
+    heading: z.string().optional().describe("Override heading font"),
+    body: z.string().optional().describe("Override body font"),
+    radius: z.enum(["none", "small", "medium", "large"]).optional(),
+    appearance: z.enum(["light", "dark", "both"]).optional(),
+    materialize: z.boolean().optional().describe("Create the variables in Figma (default true). false = return the spec only."),
+  },
+  async ({ preset, brand, primary, vibe, heading, body, radius, appearance, materialize }: any) => {
+    try {
+      const built = buildBrand({ preset, brand, primary, vibe, heading, body, radius, appearance });
+      if (materialize === false) {
+        return { content: [{ type: "text", text: JSON.stringify(built) }] };
+      }
+      const created: any[] = [];
+      for (const col of built.theme.collections) {
+        const colRes: any = await sendCommandToFigma("create_variable_collection", { name: col.name, modes: col.modes });
+        const modeIds = (colRes.modes || []).map((m: any) => m.modeId);
+        let vars = 0;
+        for (const v of col.variables as any[]) {
+          if (v.type === "COLOR") {
+            const modeValues: Record<string, any> = {};
+            col.modes.forEach((mName: string, i: number) => { if (modeIds[i]) modeValues[modeIds[i]] = v.valuesByMode[mName]; });
+            await sendCommandToFigma("create_variable", { name: v.name, collectionId: colRes.id, resolvedType: "COLOR", modeValues });
+          } else {
+            await sendCommandToFigma("create_variable", { name: v.name, collectionId: colRes.id, resolvedType: "FLOAT", value: v.value });
+          }
+          vars++;
+        }
+        created.push({ collection: col.name, id: colRes.id, modes: modeIds.length, skippedModes: colRes.skippedModes || [], variables: vars });
+      }
+      return { content: [{ type: "text", text: JSON.stringify({ brand: built.brand, created, fonts: built.brand.fonts, next: "Apply fonts with set_font_name; bind nodes to color/* variables with bind_variable." }) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error applying brand: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "search_icons",
+  "Search 200k+ open-source icons across icon sets (Iconify, keyless). Returns icon names like 'lucide:home' to pass to insert_icon. " +
+    "Keep one icon set/prefix for visual consistency.",
+  {
+    query: z.string().describe("What to find, e.g. 'shopping cart', 'arrow right'"),
+    limit: z.number().optional().describe("Max results (default 24)"),
+  },
+  async ({ query, limit }: any) => {
+    try {
+      return { content: [{ type: "text", text: JSON.stringify(await searchIcons(query, limit || 24)) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error searching icons: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "insert_icon",
+  "Fetch an icon by name (e.g. 'lucide:home' from search_icons) and place it as an editable vector in Figma. " +
+    "Optionally recolor/size and parent it. Combines Iconify (keyless) with create_svg in one step.",
+  {
+    name: z.string().describe("Icon name 'prefix:icon', e.g. 'lucide:home'"),
+    color: z.string().optional().describe("Hex color for the icon, e.g. '#111111'"),
+    size: z.number().optional().describe("Width/height in px"),
+    parentId: z.string().optional(),
+    x: z.number().optional(),
+    y: z.number().optional(),
+  },
+  async ({ name, color, size, parentId, x, y }: any) => {
+    try {
+      const svg = await fetchIconSvg(name, { color, size });
+      const r: any = await sendCommandToFigma("create_svg", { svg, parentId, x, y, name });
+      return { content: [{ type: "text", text: JSON.stringify({ inserted: name, id: r && r.id, width: r && Math.round(r.width), height: r && Math.round(r.height) }) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error inserting icon: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "search_images",
+  "Search free/CC stock photos (Openverse, keyless). Returns image URLs ready to pass to set_image_fill " +
+    "(which fetches & encodes them). Includes author/license for attribution.",
+  {
+    query: z.string().describe("Photo subject, e.g. 'mountain landscape'"),
+    count: z.number().optional().describe("Results (default 6)"),
+    orientation: z.enum(["landscape", "portrait", "square"]).optional(),
+  },
+  async ({ query, count, orientation }: any) => {
+    try {
+      return { content: [{ type: "text", text: JSON.stringify(await searchImages(query, { count, orientation })) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error searching images: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+// LOCAL superpower #1 — fill_realistic_content: replace Lorem/placeholder text in
+// a container with realistic data generated 100% locally (the "Content Reel"),
+// no API call. Scans the container's text nodes, classifies each by layer name +
+// current text, generates believable values, and applies them in one batch.
+server.tool(
+  "fill_realistic_content",
+  "LOCAL Content Reel: replace placeholder/Lorem text in a container with realistic, varied data (names, emails, phones, companies, roles, cities, dates, prices, sentences) generated fully offline on this machine — no cloud, no API. " +
+    "Picks the right data type per text layer from its layer NAME and current text. Great for filling mockups/cards/lists instantly.",
+  {
+    nodeId: z.string().optional().describe("Container node to fill. Omit to use the current Figma selection."),
+    locale: z.string().optional().describe("Reserved for locale-specific pools (currently en)."),
+  },
+  async ({ nodeId }: any) => {
+    try {
+      // Resolve target node from selection if none provided.
+      let targetId = nodeId;
+      if (!targetId) {
+        const sel: any = await sendCommandToFigma("get_selection");
+        const ids = (sel && (sel.selectionIds || (sel.selection || []).map((s: any) => s.id))) || [];
+        targetId = Array.isArray(ids) ? ids[0] : (sel && sel.id);
+        if (!targetId) return { content: [{ type: "text", text: "No nodeId given and nothing selected in Figma. Select a container or pass nodeId." }] };
+      }
+
+      // Scan text nodes in the container.
+      const scan: any = await sendCommandToFigma("scan_text_nodes", { nodeId: targetId });
+      const textNodes: any[] = (scan && (scan.textNodes || scan.nodes)) || [];
+      if (!textNodes.length) return { content: [{ type: "text", text: `No text nodes found under ${targetId}.` }] };
+
+      // Hint = layer name + current text, so classifyHint can pick the right kind.
+      const fields = textNodes.map((t) => ({ id: t.id, hint: `${t.name || ""} ${t.characters || ""}`.trim() }));
+      const generated = generateContent(fields);
+
+      // Apply with the existing batch text command.
+      const text = generated.map((g) => ({ nodeId: g.id, text: g.text }));
+      await sendCommandToFigma("set_multiple_text_contents", { nodeId: targetId, text });
+
+      const samples = generated.slice(0, 8).map((g) => ({ kind: g.kind, text: g.text }));
+      return { content: [{ type: "text", text: JSON.stringify({ updated: generated.length, samples, source: "local-offline" }) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error filling content: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+// LOCAL superpower #2 — import_tokens: read a design-tokens file off the local
+// FILESYSTEM (or accept inline json) and materialize it as Figma variables.
+// True local token sync that a cloud-only competitor can't do. Supports DTCG
+// (W3C, with {alias} resolution), Tailwind config, and CSS custom properties.
+server.tool(
+  "import_tokens",
+  "LOCAL filesystem token sync: read a design-tokens file from THIS machine's disk (filePath) — or inline json — and materialize it as Figma variables. " +
+    "Auto-detects DTCG (W3C $value/$type with {alias} refs), Tailwind config (theme.colors/spacing/...), or CSS custom properties (:root{--x}). Colors become COLOR vars, dimensions become FLOAT (px). " +
+    "Reading a local file is something cloud-only design tools can't do.",
+  {
+    filePath: z.string().optional().describe("Absolute path to a local tokens file (.json/.js/.css). Read off disk."),
+    json: z.union([z.string(), z.record(z.any())]).optional().describe("Inline tokens as a JSON string or object (instead of filePath)."),
+    format: z.enum(["auto", "dtcg", "tailwind", "cssvars"]).optional().describe("Parser to use (default auto-detect)."),
+  },
+  async ({ filePath, json, format }: any) => {
+    try {
+      // Get the raw source: prefer inline json, else read the file from disk.
+      let source: string | object;
+      if (json !== undefined && json !== null) {
+        source = json;
+      } else if (filePath) {
+        source = readFileSync(filePath, "utf8"); // <- the local-filesystem superpower
+      } else {
+        return { content: [{ type: "text", text: "Provide filePath (local file) or json (inline tokens)." }] };
+      }
+
+      const { tokens, format: detected } = parseTokensFile(source, format || "auto");
+      if (!tokens.length) return { content: [{ type: "text", text: `Parsed 0 tokens (format=${detected}). Check the file/format.` }] };
+
+      // Materialize into a single 'Imported' collection.
+      const colRes: any = await sendCommandToFigma("create_variable_collection", { name: "Imported" });
+      const byType: Record<string, number> = { COLOR: 0, FLOAT: 0, STRING: 0 };
+      let created = 0;
+      for (const t of tokens) {
+        await sendCommandToFigma("create_variable", {
+          name: t.name, collectionId: colRes.id, resolvedType: t.type, value: t.value,
+        });
+        byType[t.type] = (byType[t.type] || 0) + 1;
+        created++;
+      }
+      return { content: [{ type: "text", text: JSON.stringify({ collectionId: colRes.id, format: detected, created, byType, from: filePath ? `file:${filePath}` : "inline" }) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error importing tokens: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
 
 // Update the join_channel tool
 server.tool(

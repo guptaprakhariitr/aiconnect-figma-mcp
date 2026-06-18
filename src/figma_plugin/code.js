@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (c) 2026 Prakhar Gupta. Commercial license available — see README.
+// Copyright (c) 2026 Prakhar Gupta.
 
 // This is the main code file for the AIConnect MCP Figma plugin
 // It handles Figma API commands
@@ -8,6 +8,35 @@
 const state = {
   serverPort: 3055, // Default port
 };
+
+// --- Console capture ring buffer ---------------------------------------------
+// Mirror console.* into a bounded buffer so an agent can pull plugin-side logs
+// and errors on demand via the get_console_logs command (parity with the
+// "real-time console monitoring" other Figma MCPs expose, but fully local).
+const __consoleBuffer = [];
+const __CONSOLE_CAP = 300;
+function __pushLog(level, args) {
+  try {
+    const msg = Array.prototype.map
+      .call(args, (a) => {
+        if (typeof a === "string") return a;
+        try { return JSON.stringify(a); } catch (e) { return String(a); }
+      })
+      .join(" ");
+    __consoleBuffer.push({ level, ts: Date.now(), msg });
+    if (__consoleBuffer.length > __CONSOLE_CAP) __consoleBuffer.shift();
+  } catch (e) { /* never let logging break the plugin */ }
+}
+(function patchConsole() {
+  const levels = ["log", "info", "warn", "error", "debug"];
+  for (const lvl of levels) {
+    const orig = console[lvl] ? console[lvl].bind(console) : function () {};
+    console[lvl] = function () {
+      __pushLog(lvl, arguments);
+      try { orig.apply(null, arguments); } catch (e) {}
+    };
+  }
+})();
 
 
 // Helper function for progress updates
@@ -255,6 +284,24 @@ async function handleCommand(command, params) {
       return await createSvg(params);
     case "batch_ops":
       return await batchOps(params);
+    case "get_status":
+      return await getStatus(params);
+    case "get_console_logs":
+      return getConsoleLogs(params);
+    case "get_page_snapshot":
+      return await getPageSnapshot(params);
+    case "get_variables":
+      return await getVariables(params);
+    case "create_variable_collection":
+      return await createVariableCollection(params);
+    case "create_variable":
+      return await createVariable(params);
+    case "set_variable_value":
+      return await setVariableValue(params);
+    case "bind_variable":
+      return await bindVariable(params);
+    case "get_css":
+      return await getCss(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -1081,7 +1128,14 @@ async function createText(params) {
   } catch (error) {
     console.error("Error setting font size", error);
   }
-  setCharacters(textNode, text);
+  // Font is already loaded above, so assign characters directly (synchronous,
+  // correct) — avoids setCharacters' redundant second loadFontAsync, which in a
+  // tight batch loop cost ~70ms/text. Fall back to setCharacters only on failure.
+  try {
+    textNode.characters = text;
+  } catch (e) {
+    await setCharacters(textNode, text);
+  }
 
   // Set text color
   const paintStyle = {
@@ -4322,4 +4376,265 @@ async function setSelections(params) {
     notFoundIds: notFoundIds,
     message: `Selected ${nodes.length} nodes${notFoundIds.length > 0 ? ` (${notFoundIds.length} not found)` : ''}`
   };
+}
+
+// ============================================================================
+// AIConnect extensions: diagnostics, console capture, snapshot, variables.
+// ============================================================================
+
+// ---- Diagnostics ------------------------------------------------------------
+// Lightweight health/context probe so an agent can orient itself in one call.
+async function getStatus() {
+  const page = figma.currentPage;
+  let collectionCount = 0;
+  let variableCount = 0;
+  try {
+    if (figma.variables) {
+      const cols = await figma.variables.getLocalVariableCollectionsAsync();
+      const vars = await figma.variables.getLocalVariablesAsync();
+      collectionCount = cols.length;
+      variableCount = vars.length;
+    }
+  } catch (e) {}
+  return {
+    ok: true,
+    editorType: figma.editorType,
+    fileKey: typeof figma.fileKey !== "undefined" ? figma.fileKey : null,
+    documentName: figma.root && figma.root.name,
+    pageCount: figma.root ? figma.root.children.length : 0,
+    currentPage: { id: page.id, name: page.name, childCount: page.children.length },
+    selectionCount: page.selection.length,
+    selectionIds: page.selection.map((n) => n.id),
+    apis: {
+      variables: !!figma.variables,
+      base64Decode: !!figma.base64Decode,
+    },
+    collectionCount,
+    variableCount,
+    consoleBuffered: __consoleBuffer.length,
+    pluginVersion: "0.5.0",
+    hint: page.selection.length
+      ? "Selection ready — get_css / get_page_snapshot / read_my_design will target it. Build with batch_ops."
+      : "Nothing selected. Build a section in one shot with batch_ops, then get_page_snapshot to verify.",
+    workflow: ["get_status", "batch_ops (build in bulk, use @ref)", "get_page_snapshot (verify)", "get_variables/export_tokens (tokens)", "get_css (dev handoff)"],
+  };
+}
+
+// ---- Console capture --------------------------------------------------------
+// Return recent plugin-side console output (newest last). { limit?, level?, clear? }
+function getConsoleLogs(params) {
+  const { limit = 100, level, clear } = params || {};
+  let logs = __consoleBuffer;
+  if (level) logs = logs.filter((l) => l.level === level);
+  const out = logs.slice(-Math.max(1, Math.min(limit, __CONSOLE_CAP)));
+  const result = { count: out.length, total: __consoleBuffer.length, logs: out };
+  if (clear) __consoleBuffer.length = 0;
+  return result;
+}
+
+// ---- Visual snapshot --------------------------------------------------------
+// Export a PNG of the current context for a visual feedback loop.
+// Targets, in order: explicit nodeId -> current selection -> first exportable
+// top-level node on the page. Returns base64 PNG — fully local.
+async function getPageSnapshot(params) {
+  const { nodeId, scale = 1 } = params || {};
+  let target = null;
+  if (nodeId) {
+    target = await figma.getNodeByIdAsync(nodeId);
+    if (!target) throw new Error(`Node not found: ${nodeId}`);
+  } else if (figma.currentPage.selection.length === 1) {
+    target = figma.currentPage.selection[0];
+  } else if (figma.currentPage.selection.length > 1) {
+    // Export the common parent so multiple selected nodes are captured together.
+    target = figma.currentPage.selection[0].parent || figma.currentPage.selection[0];
+  } else {
+    target = figma.currentPage.children.find((n) => "exportAsync" in n) || null;
+  }
+  if (!target) throw new Error("Nothing to snapshot: empty page and no selection.");
+  if (!("exportAsync" in target)) throw new Error(`Node does not support exporting: ${target.id}`);
+  const bytes = await target.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: scale } });
+  return {
+    nodeId: target.id,
+    name: target.name,
+    type: target.type,
+    mimeType: "image/png",
+    scale,
+    imageData: customBase64Encode(bytes),
+  };
+}
+
+// ---- Variables / design tokens ---------------------------------------------
+function __requireVariablesApi() {
+  if (!figma.variables) {
+    throw new Error("Figma Variables API unavailable in this editor/plan. Open a Design file in the desktop app.");
+  }
+}
+
+function __normColor(c) {
+  if (!c) return { r: 0, g: 0, b: 0, a: 1 };
+  return { r: c.r || 0, g: c.g || 0, b: c.b || 0, a: c.a != null ? c.a : 1 };
+}
+
+// Coerce a raw value into the shape the Variables API expects for a type.
+function __coerceVarValue(resolvedType, value) {
+  switch (resolvedType) {
+    case "COLOR": return __normColor(value);
+    case "FLOAT": return typeof value === "number" ? value : parseFloat(value) || 0;
+    case "BOOLEAN": return !!value;
+    case "STRING": default: return value == null ? "" : String(value);
+  }
+}
+
+// List every local collection and its variables (with per-mode values).
+async function getVariables() {
+  __requireVariablesApi();
+  const collections = await figma.variables.getLocalVariableCollectionsAsync();
+  const variables = await figma.variables.getLocalVariablesAsync();
+  return {
+    collections: collections.map((c) => ({
+      id: c.id,
+      name: c.name,
+      defaultModeId: c.defaultModeId,
+      modes: c.modes.map((m) => ({ modeId: m.modeId, name: m.name })),
+      variableCount: (c.variableIds || []).length, // count, not the verbose id array (token-lean)
+    })),
+    variables: variables.map((v) => ({
+      id: v.id,
+      name: v.name,
+      resolvedType: v.resolvedType,
+      collectionId: v.variableCollectionId,
+      valuesByMode: v.valuesByMode,
+    })),
+  };
+}
+
+// Create a collection. { name, modes?:[string] } — first mode renames the default.
+async function createVariableCollection(params) {
+  __requireVariablesApi();
+  const { name, modes } = params || {};
+  if (!name) throw new Error("Missing name parameter");
+  const collection = figma.variables.createVariableCollection(name);
+  const skippedModes = [];
+  if (Array.isArray(modes) && modes.length) {
+    collection.renameMode(collection.modes[0].modeId, modes[0]);
+    // Extra modes require a paid plan; degrade gracefully on free/starter plans
+    // (AIConnect's audience) instead of failing the whole collection.
+    for (let i = 1; i < modes.length; i++) {
+      try { collection.addMode(modes[i]); }
+      catch (e) { skippedModes.push(modes[i]); }
+    }
+  }
+  return {
+    id: collection.id,
+    name: collection.name,
+    defaultModeId: collection.defaultModeId,
+    modes: collection.modes.map((m) => ({ modeId: m.modeId, name: m.name })),
+    skippedModes,
+    note: skippedModes.length ? "Extra modes need a paid Figma plan; created with available modes." : undefined,
+  };
+}
+
+// Create a variable. { name, collectionId, resolvedType, value?, modeValues?:{modeId:value} }
+async function createVariable(params) {
+  __requireVariablesApi();
+  const { name, collectionId, resolvedType, value, modeValues } = params || {};
+  if (!name) throw new Error("Missing name parameter");
+  if (!collectionId) throw new Error("Missing collectionId parameter");
+  const type = (resolvedType || "STRING").toUpperCase();
+  const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
+  if (!collection) throw new Error(`Collection not found: ${collectionId}`);
+  const variable = figma.variables.createVariable(name, collection, type);
+  if (modeValues && typeof modeValues === "object") {
+    for (const modeId of Object.keys(modeValues)) {
+      variable.setValueForMode(modeId, __coerceVarValue(type, modeValues[modeId]));
+    }
+  } else if (value !== undefined) {
+    variable.setValueForMode(collection.defaultModeId, __coerceVarValue(type, value));
+  }
+  return {
+    id: variable.id,
+    name: variable.name,
+    resolvedType: variable.resolvedType,
+    collectionId: variable.variableCollectionId,
+    valuesByMode: variable.valuesByMode,
+  };
+}
+
+// Set/overwrite a variable's value for a mode (default mode if modeId omitted).
+async function setVariableValue(params) {
+  __requireVariablesApi();
+  const { variableId, value, modeId } = params || {};
+  if (!variableId) throw new Error("Missing variableId parameter");
+  const variable = await figma.variables.getVariableByIdAsync(variableId);
+  if (!variable) throw new Error(`Variable not found: ${variableId}`);
+  let mode = modeId;
+  if (!mode) {
+    const collection = await figma.variables.getVariableCollectionByIdAsync(variable.variableCollectionId);
+    mode = collection.defaultModeId;
+  }
+  variable.setValueForMode(mode, __coerceVarValue(variable.resolvedType, value));
+  return { id: variable.id, name: variable.name, modeId: mode, valuesByMode: variable.valuesByMode };
+}
+
+// Bind a variable to a node property. { nodeId, field, variableId }
+// field "fill"/"fills" binds the first fill's color; any other field uses
+// node.setBoundVariable (e.g. width, height, cornerRadius, opacity, characters).
+async function bindVariable(params) {
+  __requireVariablesApi();
+  const { nodeId, field, variableId } = params || {};
+  if (!nodeId) throw new Error("Missing nodeId parameter");
+  if (!field) throw new Error("Missing field parameter");
+  if (!variableId) throw new Error("Missing variableId parameter");
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) throw new Error(`Node not found: ${nodeId}`);
+  const variable = await figma.variables.getVariableByIdAsync(variableId);
+  if (!variable) throw new Error(`Variable not found: ${variableId}`);
+
+  if (field === "fill" || field === "fills") {
+    if (!("fills" in node)) throw new Error(`Node does not support fills: ${nodeId}`);
+    const base = Array.isArray(node.fills) && node.fills.length
+      ? JSON.parse(JSON.stringify(node.fills[0]))
+      : { type: "SOLID", color: { r: 0, g: 0, b: 0 } };
+    const bound = figma.variables.setBoundVariableForPaint(base, "color", variable);
+    node.fills = [bound];
+  } else {
+    node.setBoundVariable(field, variable);
+  }
+  return { id: node.id, name: node.name, field, variableId };
+}
+
+// ---- Dev Mode-equivalent inspection ----------------------------------------
+// Dev Mode (copy-as-CSS, measurements, specs) is a paid *seat*, but the data it
+// surfaces is exposed to any plugin via node.getCSSAsync() on all plans. This
+// returns that CSS plus a compact dev spec — the inspect info without the seat.
+async function getCss(params) {
+  const { nodeId } = params || {};
+  if (!nodeId) throw new Error("Missing nodeId parameter");
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) throw new Error(`Node not found: ${nodeId}`);
+  let css = {};
+  if (typeof node.getCSSAsync === "function") {
+    try { css = await node.getCSSAsync(); } catch (e) { css = { error: e.message }; }
+  }
+  const spec = { id: node.id, name: node.name, type: node.type };
+  if ("width" in node) { spec.width = Math.round(node.width); spec.height = Math.round(node.height); }
+  if (node.absoluteBoundingBox) {
+    spec.x = Math.round(node.absoluteBoundingBox.x);
+    spec.y = Math.round(node.absoluteBoundingBox.y);
+  }
+  if ("layoutMode" in node && node.layoutMode && node.layoutMode !== "NONE") {
+    spec.autoLayout = {
+      direction: node.layoutMode,
+      gap: node.itemSpacing,
+      padding: [node.paddingTop, node.paddingRight, node.paddingBottom, node.paddingLeft],
+      primaryAxis: node.primaryAxisAlignItems,
+      counterAxis: node.counterAxisAlignItems,
+    };
+  }
+  if ("cornerRadius" in node && node.cornerRadius !== figma.mixed) spec.cornerRadius = node.cornerRadius;
+  if ("opacity" in node) spec.opacity = node.opacity;
+  if ("fontName" in node && node.fontName !== figma.mixed) {
+    spec.typography = { family: node.fontName.family, style: node.fontName.style, size: node.fontSize, lineHeight: node.lineHeight };
+  }
+  return { css, spec };
 }

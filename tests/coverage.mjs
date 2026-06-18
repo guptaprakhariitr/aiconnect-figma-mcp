@@ -31,7 +31,8 @@ console.log(`MCP commands sent:   ${[...sent].length}`);
 console.log(`Plugin case handlers: ${[...handled].length}`);
 
 // Our custom additions must be present on both sides.
-const custom = ["set_image_fill", "set_font_name", "insert_child", "set_effect", "set_gradient_fill", "create_ellipse", "create_svg", "batch_ops"];
+const custom = ["set_image_fill", "set_font_name", "insert_child", "set_effect", "set_gradient_fill", "create_ellipse", "create_svg", "batch_ops",
+  "get_status", "get_console_logs", "get_page_snapshot", "get_variables", "create_variable_collection", "create_variable", "set_variable_value", "bind_variable", "get_css"];
 const customOk = custom.every((c) => sent.has(c) && handled.has(c));
 console.log(`Custom commands wired (tool + handler): ${customOk ? "yes ✓" : "NO ✗"}`);
 for (const c of custom) {

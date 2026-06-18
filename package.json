@@ -1,7 +1,7 @@
 {
   "name": "aiconnect-figma-mcp",
   "description": "MCP server + Figma plugin that let AI agents read and edit Figma over a local WebSocket. AIConnect adds image/font/effect/gradient/SVG commands and a batch_ops command that builds whole pages in one round-trip.",
-  "version": "0.4.0",
+  "version": "1.0.0",
   "license": "AGPL-3.0-or-later",
   "author": "Prakhar Gupta",
   "homepage": "https://github.com/guptaprakhariitr/aiconnect-figma-mcp#readme",
@@ -25,18 +25,27 @@
   "module": "dist/server.js",
   "main": "dist/server.js",
   "bin": {
-    "aiconnect-figma-mcp": "dist/server.js"
+    "aiconnect-figma-mcp": "dist/server.js",
+    "aiconnect-figma-relay": "scripts/relay.mjs"
   },
   "files": [
     "dist",
+    "scripts/relay.mjs",
+    "scripts/setup.sh",
     "src/figma_plugin",
     "src/socket.ts",
     "README.md",
-    "LICENSE"
+    "CHANGELOG.md",
+    "LICENSE",
+    "NOTICE"
   ],
   "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
-    "start": "bun run dist/server.js",
+    "start": "node dist/server.js",
+    "relay": "node scripts/relay.mjs",
     "socket": "bun run src/socket.ts",
     "setup": "./scripts/setup.sh",
     "build": "tsup",
@@ -44,6 +53,7 @@
     "dev": "bun run build:watch",
     "test": "bun tests/coverage.mjs",
     "test:smoke": "bun tests/smoke.mjs",
+    "prepublishOnly": "bun run build",
     "pub:release": "bun run build && npm publish"
   },
   "devDependencies": {
