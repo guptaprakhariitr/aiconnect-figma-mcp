@@ -37,6 +37,32 @@ Open-source · fully local · no cloud, no telemetry · works with Claude Code, 
 
 ---
 
+## 🚀 Get started with Claude Code (or Cursor)
+
+The fastest way to get this running is to let your agent do it. Open **Claude Code** (or Cursor) and paste this:
+
+```text
+Hi! Help me set up AIConnect for Figma on this machine and walk me through it.
+
+1. Add the AIConnect MCP server to my MCP client config so it runs with:
+   npx -y aiconnect-figma-mcp
+2. Start the local relay for me and keep it running:
+   npx -y aiconnect-figma-relay
+3. Walk me through downloading the plugin zip from the latest release
+   (https://github.com/guptaprakhariitr/aiconnect-figma-mcp/releases/latest),
+   unzipping it, and importing the manifest.json into the Figma desktop app.
+4. Tell me how to copy the channel id from the plugin, then call join_channel
+   with it so we're connected.
+
+Once we're connected, let's build something — go crazy.
+```
+
+That's it. It installs the server, starts the relay, walks you through the one manual Figma step, and connects. After that you just keep talking to it — _"apply the fintech-trust brand and build a pricing page,"_ _"generate a dark theme and bind it,"_ whatever. 🎉
+
+> Published on npm as [`aiconnect-figma-mcp`](https://www.npmjs.com/package/aiconnect-figma-mcp) — `npx` always pulls the latest.
+
+---
+
 ## 🔓 What AIConnect unlocks for free
 
 Most of these are behind a paid Figma seat or a paid plugin. With AIConnect they're just MCP tools your agent can call — **keyless and local**.
