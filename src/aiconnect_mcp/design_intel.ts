@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Prakhar Gupta.
 //
 // Design-intelligence layer for AIConnect: palettes, perceptual color scales,

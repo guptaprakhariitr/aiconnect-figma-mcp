@@ -9,7 +9,7 @@
 Open-source · fully local · no cloud, no telemetry · works with Claude Code, Cursor, or any MCP client.
 
 [![npm](https://img.shields.io/npm/v/aiconnect-figma-mcp.svg?color=cb3837&logo=npm)](https://www.npmjs.com/package/aiconnect-figma-mcp)
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-1e7a7f.svg)](./LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-1e7a7f.svg)](./LICENSE)
 [![Free for everyone](https://img.shields.io/badge/Free-individuals%20%26%20teams-2ea44f.svg)](#-license)
 [![MCP](https://img.shields.io/badge/Model%20Context%20Protocol-compatible-8A2BE2.svg)](https://modelcontextprotocol.io)
 [![Local-first](https://img.shields.io/badge/100%25-local%20%C2%B7%20no%20telemetry-2ea44f.svg)](#why-aiconnect)
@@ -46,18 +46,17 @@ Hi! Help me set up AIConnect for Figma on this machine and walk me through it.
 
 1. Add the AIConnect MCP server to my MCP client config so it runs with:
    npx -y aiconnect-figma-mcp
-2. Start the local relay for me and keep it running:
-   npx -y aiconnect-figma-relay
-3. Walk me through downloading the plugin zip from the latest release
+   (it hosts the local relay itself — no separate process to start)
+2. Walk me through downloading the plugin zip from the latest release
    (https://github.com/guptaprakhariitr/aiconnect-figma-mcp/releases/latest),
    unzipping it, and importing the manifest.json into the Figma desktop app.
-4. Tell me how to copy the channel id from the plugin, then call join_channel
+3. Tell me how to copy the channel id from the plugin, then call join_channel
    with it so we're connected.
 
 Once we're connected, let's build something — go crazy.
 ```
 
-That's it. It installs the server, starts the relay, walks you through the one manual Figma step, and connects. After that you just keep talking to it — _"apply the fintech-trust brand and build a pricing page,"_ _"generate a dark theme and bind it,"_ whatever. 🎉
+That's it. It installs the server (which brings the relay up automatically), walks you through the one manual Figma step, and connects. After that you just keep talking to it — _"apply the fintech-trust brand and build a pricing page,"_ _"generate a dark theme and bind it,"_ whatever. 🎉
 
 > Published on npm as [`aiconnect-figma-mcp`](https://www.npmjs.com/package/aiconnect-figma-mcp) — `npx` always pulls the latest.
 
@@ -90,7 +89,7 @@ Most of these are behind a paid Figma seat or a paid plugin. With AIConnect they
 | 🎯 **Design intelligence** | Keyless & local: `apply_brand` (full token systems from a preset/brand/color), OKLCH `generate_palette`/`generate_theme`, WCAG `check_contrast` (+auto‑fix), `suggest_fonts`, 200k+ `insert_icon` (Iconify), `search_images` (Openverse). |
 | 🎟️ **Design tokens & Dev Mode** | First‑class Figma variables (`create_variable`, `bind_variable`, `export_tokens`), plus `get_css` — Dev Mode‑equivalent inspect **without a paid Dev seat**. |
 | 🔍 **Debuggable** | `get_status`, `get_console_logs`, and `get_page_snapshot` — the agent literally sees its work and self-corrects. |
-| 🛠️ **Open & hackable** | AGPL‑3.0, ~one file to extend. Wire it into your own agent skills. |
+| 🛠️ **Open & hackable** | MIT‑licensed, ~one file to extend. Wire it into your own agent skills. |
 
 ---
 
@@ -122,13 +121,14 @@ No clone, no build — `npx` fetches and runs the published server. Add this to 
 }
 ```
 
-### 2 · Start the local relay — leave it running
+### 2 · (Nothing to do — the relay is built in)
 
-```bash
-npx -y aiconnect-figma-relay     # → relay running on ws://localhost:3055
-```
+The MCP server hosts the localhost relay (`ws://localhost:3055`) itself, so there's
+**no separate process to start**. It binds the port on launch; if something already
+holds it, it connects to that instead.
 
-The relay runs on plain **Node** — no Bun required.
+> Want to run the relay standalone anyway (e.g. to share one relay across agents)?
+> `npx -y -p aiconnect-figma-mcp aiconnect-figma-relay` — plain Node, no Bun required.
 
 ### 3 · Install the Figma plugin
 
@@ -164,10 +164,9 @@ git clone https://github.com/guptaprakhariitr/aiconnect-figma-mcp
 cd aiconnect-figma-mcp
 bun run setup        # installs, builds, writes a correctly-pathed .mcp.json,
                      # and prints the plugin-import + channel steps
-bun run relay        # in a second terminal — or: bun socket (Bun-native)
 ```
 
-Then point your agent at the absolute `dist/server.js` path that `setup` printed, import [`src/figma_plugin/manifest.json`](src/figma_plugin/manifest.json), and join the channel.
+Then point your agent at the absolute `dist/server.js` path that `setup` printed, import [`src/figma_plugin/manifest.json`](src/figma_plugin/manifest.json), and join the channel. The server hosts the relay itself, so no second terminal is needed — though you can still run one standalone with `bun run relay` (or `bun socket`) if you want to share one relay across agents.
 
 </details>
 
@@ -269,7 +268,7 @@ AI agent (MCP client)
    Your Figma file
 ```
 
-The **MCP server** ([`src/aiconnect_mcp/server.ts`](src/aiconnect_mcp/server.ts)) exposes the tools and runs under plain Node; the **relay** brokers messages on port 3055 — run it under Node via [`scripts/relay.mjs`](scripts/relay.mjs) (`aiconnect-figma-relay`) or under Bun via [`src/socket.ts`](src/socket.ts) (`bun socket`); the **plugin** ([`src/figma_plugin/`](src/figma_plugin/)) runs inside Figma. The agent and the plugin join the same **channel**.
+The **MCP server** ([`src/aiconnect_mcp/server.ts`](src/aiconnect_mcp/server.ts)) exposes the tools and runs under plain Node; it also **hosts the relay in-process** by binding port 3055 on startup (falling back to an existing relay if the port is taken), so there's normally nothing separate to run. The **relay** can also run standalone — under Node via [`scripts/relay.mjs`](scripts/relay.mjs) (`aiconnect-figma-relay`) or under Bun via [`src/socket.ts`](src/socket.ts) (`bun socket`) — to share one broker across agents. The **plugin** ([`src/figma_plugin/`](src/figma_plugin/)) runs inside Figma. The agent and the plugin join the same **channel**.
 
 ---
 
@@ -328,6 +327,6 @@ PRs welcome. Run `bun run test` before opening a PR.
 
 **Free for everyone — individuals and teams alike. No seat limits, no usage caps, no paywalls, no restrictions.** Use it at work or at home, on as many machines and projects as you like, forever.
 
-AIConnect is open source under the **GNU AGPL‑3.0** (see [LICENSE](./LICENSE)) — you're free to use, modify, and self‑host it. The only ask: if you distribute a modified version or run one as a public network service, share your changes under the same license. That's it.
+AIConnect is open source under the **MIT License** (see [LICENSE](./LICENSE)) — use, modify, redistribute, and embed it in commercial or closed‑source products freely. The only ask: keep the copyright and license notice. That's it.
 
 Builds on prior MIT‑licensed work — see [NOTICE](./NOTICE).

@@ -427,7 +427,7 @@
 
         // Add instructions for localhost when disconnected
         if (!isConnected) {
-          statusMessage += `<br><br>Run this in your terminal, then connect<br><code>bun socket</code>`;
+          statusMessage += `<br><br>Make sure your AI agent (the AIConnect MCP server) is running — it hosts the relay. Then click Connect.<br>Or start the relay manually:<br><code>npx -y -p aiconnect-figma-mcp aiconnect-figma-relay</code>`;
         }
 
         connectionStatus.innerHTML = statusMessage;

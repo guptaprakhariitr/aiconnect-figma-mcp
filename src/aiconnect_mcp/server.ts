@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Prakhar Gupta.
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import WebSocket from "ws";
+import WebSocket, { WebSocketServer } from "ws";
 import { v4 as uuidv4 } from "uuid";
 import {
   generatePalette, checkContrast, suggestFonts, generateTheme,
@@ -133,6 +133,7 @@ const args = process.argv.slice(2);
 const serverArg = args.find(arg => arg.startsWith('--server='));
 const serverUrl = serverArg ? serverArg.split('=')[1] : 'localhost';
 const WS_URL = serverUrl === 'localhost' ? `ws://${serverUrl}` : `wss://${serverUrl}`;
+const RELAY_PORT = Number(process.env.PORT || process.env.AICONNECT_RELAY_PORT || 3055);
 
 // Document Info Tool
 server.tool(
@@ -3185,8 +3186,109 @@ function processFigmaNodeResponse(result: unknown): any {
   return result;
 }
 
+// Embedded WebSocket relay. The MCP server is a long-lived process owned by the
+// MCP client, so it can host the localhost broker itself — no separate terminal.
+// On startup it tries to bind RELAY_PORT: if free, it becomes the relay; if a
+// relay (or another MCP server) already holds the port, it backs off and connects
+// to that one as a client. Wire behaviour matches scripts/relay.mjs / src/socket.ts.
+let relayServer: WebSocketServer | null = null;
+
+function startEmbeddedRelay(port: number = RELAY_PORT): Promise<void> {
+  // Only host a relay for localhost; a remote wss target has its own relay.
+  if (serverUrl !== 'localhost') return Promise.resolve();
+
+  return new Promise((resolve) => {
+    const channels = new Map<string, Set<WebSocket>>();
+    const send = (sock: WebSocket, obj: unknown) => {
+      if (sock.readyState === WebSocket.OPEN) sock.send(JSON.stringify(obj));
+    };
+
+    const wss = new WebSocketServer({ port });
+
+    wss.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'EADDRINUSE') {
+        logger.info(`Relay already running on port ${port}; will connect as a client`);
+      } else {
+        logger.warn(`Embedded relay error: ${err.message}`);
+      }
+      resolve(); // either way, fall through to connecting as a client
+    });
+
+    wss.on('listening', () => {
+      relayServer = wss;
+      logger.info(`Embedded relay listening on ws://localhost:${port}`);
+      resolve();
+    });
+
+    wss.on('connection', (sock: WebSocket) => {
+      send(sock, { type: 'system', message: 'Please join a channel to start chatting' });
+
+      sock.on('message', (raw: WebSocket.RawData) => {
+        let data: any;
+        try {
+          data = JSON.parse(raw.toString());
+        } catch {
+          return;
+        }
+
+        if (data.type === 'join') {
+          const channelName = data.channel;
+          if (!channelName || typeof channelName !== 'string') {
+            send(sock, { type: 'error', message: 'Channel name is required' });
+            return;
+          }
+          if (!channels.has(channelName)) channels.set(channelName, new Set());
+          const clients = channels.get(channelName)!;
+          clients.add(sock);
+          send(sock, { type: 'system', message: `Joined channel: ${channelName}`, channel: channelName });
+          send(sock, { type: 'system', message: { id: data.id, result: 'Connected to channel: ' + channelName }, channel: channelName });
+          for (const client of clients) {
+            if (client !== sock) send(client, { type: 'system', message: 'A new user has joined the channel', channel: channelName });
+          }
+          return;
+        }
+
+        if (data.type === 'message') {
+          const channelName = data.channel;
+          const clients = channelName && channels.get(channelName);
+          if (!clients || !clients.has(sock)) {
+            send(sock, { type: 'error', message: 'You must join the channel first' });
+            return;
+          }
+          for (const client of clients) {
+            if (client !== sock && client.readyState === WebSocket.OPEN) {
+              send(client, { type: 'broadcast', message: data.message, sender: 'peer', channel: channelName });
+            }
+          }
+          return;
+        }
+
+        if (data.type === 'progress_update') {
+          const channelName = data.channel;
+          const clients = channelName && channels.get(channelName);
+          if (!clients || !clients.has(sock)) return;
+          for (const client of clients) {
+            if (client !== sock) send(client, data);
+          }
+        }
+      });
+
+      sock.on('close', () => {
+        for (const [channelName, clients] of channels) {
+          if (clients.has(sock)) {
+            clients.delete(sock);
+            for (const client of clients) {
+              send(client, { type: 'system', message: 'A user has left the channel', channel: channelName });
+            }
+          }
+        }
+      });
+    });
+  });
+}
+
 // Update the connectToFigma function
-function connectToFigma(port: number = 3055) {
+function connectToFigma(port: number = RELAY_PORT) {
   // If already connected, do nothing
   if (ws && ws.readyState === WebSocket.OPEN) {
     logger.info('Already connected to Figma');
@@ -3917,7 +4019,9 @@ server.tool(
 // Start the server
 async function main() {
   try {
-    // Try to connect to Figma socket server
+    // Host the relay in-process if the port is free (no separate terminal needed),
+    // then connect to it as a client.
+    await startEmbeddedRelay();
     connectToFigma();
   } catch (error) {
     logger.warn(`Could not connect to Figma initially: ${error instanceof Error ? error.message : String(error)}`);

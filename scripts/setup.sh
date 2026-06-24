@@ -73,7 +73,7 @@ echo
 bold "Next steps"
 echo "  1) Start the local relay and leave it running:"
 echo
-echo "         $RUNTIME run relay        # or: npx aiconnect-figma-relay"
+echo "         $RUNTIME run relay        # or: npx -y -p aiconnect-figma-mcp aiconnect-figma-relay"
 echo
 echo "  2) In the Figma DESKTOP app (browser can't import dev plugins):"
 echo "         Plugins → Development → Import plugin from manifest…"

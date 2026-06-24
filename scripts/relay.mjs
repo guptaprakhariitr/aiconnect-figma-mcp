@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Prakhar Gupta.
 //
 // Node-runnable WebSocket relay for AIConnect for Figma.
@@ -11,8 +11,8 @@
 // wire (join / message / progress_update / broadcast envelopes).
 //
 // Usage:
-//   npx aiconnect-figma-relay            # default port 3055
-//   PORT=4000 npx aiconnect-figma-relay  # custom port
+//   npx -y -p aiconnect-figma-mcp aiconnect-figma-relay            # default port 3055
+//   PORT=4000 npx -y -p aiconnect-figma-mcp aiconnect-figma-relay  # custom port
 //   node scripts/relay.mjs
 
 import { WebSocketServer, WebSocket } from "ws";
