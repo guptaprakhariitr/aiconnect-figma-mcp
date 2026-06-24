@@ -50,8 +50,8 @@ Hi! Help me set up AIConnect for Figma on this machine and walk me through it.
 2. Walk me through downloading the plugin zip from the latest release
    (https://github.com/guptaprakhariitr/aiconnect-figma-mcp/releases/latest),
    unzipping it, and importing the manifest.json into the Figma desktop app.
-3. Tell me how to copy the channel id from the plugin, then call join_channel
-   with it so we're connected.
+3. Once the plugin is running, call join_channel (no arguments — it
+   auto-detects the plugin) so we're connected.
 
 Once we're connected, let's build something — go crazy.
 ```
@@ -128,7 +128,7 @@ The MCP server hosts the localhost relay (`ws://localhost:3055`) itself, so ther
 holds it, it connects to that instead.
 
 > Want to run the relay standalone anyway (e.g. to share one relay across agents)?
-> `npx -y -p aiconnect-figma-mcp aiconnect-figma-relay` — plain Node, no Bun required.
+> `npx -y aiconnect-figma-mcp relay` — plain Node, no Bun required.
 
 ### 3 · Install the Figma plugin
 
@@ -140,17 +140,19 @@ Then in the **Figma desktop app** (not the browser): main menu → **Plugins →
 <img src="assets/screenshots/step-import-manifest.png" width="560" alt="Figma → Plugins & widgets → Import from manifest" />
 </div>
 
-### 4 · Run the plugin & copy the channel
+### 4 · Run the plugin
 
-Run **Plugins → Development → AIConnect for Figma**. The panel connects to the relay and shows a **channel id** — copy it.
+Run **Plugins → Development → AIConnect for Figma**. Once your agent is running, the panel turns **green** on its own — the MCP server hosts the connection, so there's no button to press and no code to copy.
 
 <div align="center">
-<img src="assets/screenshots/step-plugin-connected.png" width="420" alt="AIConnect plugin connected, showing the channel id" />
+<img src="assets/screenshots/step-plugin-connected.png" width="420" alt="AIConnect plugin connected" />
 </div>
 
 ### 5 · Connect and build
 
-In your agent, call **`join_channel`** with the id from the plugin, then ask it to design. That's it. 🎉
+In your agent, call **`join_channel`** — **no arguments needed**; it auto-detects the running plugin. Then ask it to design. That's it. 🎉
+
+<sub>(Running a relay standalone, or several plugins at once? Pass the channel code from the plugin: `join_channel("<code>")`.)</sub>
 
 > 💡 Keep the Figma window **focused** while the agent works — Figma pauses background plugins, which surfaces as command timeouts.
 
@@ -166,7 +168,7 @@ bun run setup        # installs, builds, writes a correctly-pathed .mcp.json,
                      # and prints the plugin-import + channel steps
 ```
 
-Then point your agent at the absolute `dist/server.js` path that `setup` printed, import [`src/figma_plugin/manifest.json`](src/figma_plugin/manifest.json), and join the channel. The server hosts the relay itself, so no second terminal is needed — though you can still run one standalone with `bun run relay` (or `bun socket`) if you want to share one relay across agents.
+Then point your agent at the absolute `dist/server.js` path that `setup` printed, import [`src/figma_plugin/manifest.json`](src/figma_plugin/manifest.json), and call `join_channel` (no arguments — it auto-detects the plugin). The server hosts the relay itself, so no second terminal is needed — though you can still run one standalone with `bun run relay` (or `npx -y aiconnect-figma-mcp relay`) if you want to share one relay across agents.
 
 </details>
 
@@ -268,7 +270,7 @@ AI agent (MCP client)
    Your Figma file
 ```
 
-The **MCP server** ([`src/aiconnect_mcp/server.ts`](src/aiconnect_mcp/server.ts)) exposes the tools and runs under plain Node; it also **hosts the relay in-process** by binding port 3055 on startup (falling back to an existing relay if the port is taken), so there's normally nothing separate to run. The **relay** can also run standalone — under Node via [`scripts/relay.mjs`](scripts/relay.mjs) (`aiconnect-figma-relay`) or under Bun via [`src/socket.ts`](src/socket.ts) (`bun socket`) — to share one broker across agents. The **plugin** ([`src/figma_plugin/`](src/figma_plugin/)) runs inside Figma. The agent and the plugin join the same **channel**.
+The **MCP server** ([`src/aiconnect_mcp/server.ts`](src/aiconnect_mcp/server.ts)) exposes the tools and runs under plain Node; it also **hosts the relay in-process** by binding port 3055 on startup (falling back to an existing relay if the port is taken), so there's normally nothing separate to run. The **relay** can also run standalone — `npx -y aiconnect-figma-mcp relay` (Node) or `bun socket` (Bun) — to share one broker across agents. The **plugin** ([`src/figma_plugin/`](src/figma_plugin/)) runs inside Figma. The agent and the plugin meet on the same **channel**; because the server observes the plugin's channel through the relay, `join_channel` needs no code in the normal case.
 
 ---
 

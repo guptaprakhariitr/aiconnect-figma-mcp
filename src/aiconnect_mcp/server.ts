@@ -80,6 +80,10 @@ const pendingRequests = new Map<string, {
 
 // Track which channel each client is in
 let currentChannel: string | null = null;
+// The channel the Figma plugin most recently joined, observed via the embedded
+// relay. Lets `join_channel` auto-join with no copy-pasted code in the common
+// case (server hosts the relay, one plugin connected).
+let lastObservedChannel: string | null = null;
 
 // Create MCP server. The `instructions` block is surfaced to the agent on
 // connect — it teaches the high-leverage workflow so the tools are used well,
@@ -87,7 +91,7 @@ let currentChannel: string | null = null;
 const server = new McpServer(
   {
     name: "AIConnectMCP",
-    version: "1.0.0",
+    version: "1.2.0",
   },
   {
     instructions: [
@@ -95,7 +99,8 @@ const server = new McpServer(
       "",
       "1. ORIENT — call `get_status` first. It confirms the connection and shows the",
       "   document, current page, selection, and which APIs (variables) are available.",
-      "   If it errors with 'join a channel', call `join_channel` with the code shown in the plugin UI.",
+      "   If it errors with 'join a channel', just call `join_channel` with no arguments —",
+      "   it auto-detects the running plugin's channel (no code to copy).",
       "",
       "2. BUILD IN BULK — prefer `batch_ops` over individual create_* calls. Send a whole",
       "   section/page in ONE round-trip: each op is { ref?, command, params? }; reference",
@@ -3240,6 +3245,8 @@ function startEmbeddedRelay(port: number = RELAY_PORT): Promise<void> {
           if (!channels.has(channelName)) channels.set(channelName, new Set());
           const clients = channels.get(channelName)!;
           clients.add(sock);
+          // Remember it so join_channel() can auto-join without a copied code.
+          lastObservedChannel = channelName;
           send(sock, { type: 'system', message: `Joined channel: ${channelName}`, channel: channelName });
           send(sock, { type: 'system', message: { id: data.id, result: 'Connected to channel: ' + channelName }, channel: channelName });
           for (const client of clients) {
@@ -3971,34 +3978,39 @@ server.tool(
 // Update the join_channel tool
 server.tool(
   "join_channel",
-  "Join a specific channel to communicate with Figma",
+  "Connect to the Figma plugin's channel. Usually call with no arguments — the " +
+  "server auto-detects the channel of the running plugin. Pass `channel` only to " +
+  "target a specific code (e.g. when using an external relay or multiple plugins).",
   {
-    channel: z.string().describe("The name of the channel to join").default(""),
+    channel: z.string().describe("Channel code from the plugin UI. Omit to auto-join the connected plugin.").default(""),
   },
   async ({ channel }: any) => {
     try {
-      if (!channel) {
-        // If no channel provided, ask the user for input
+      // Auto-join: if no channel was given, use the one the plugin announced
+      // through the embedded relay.
+      const target = channel || lastObservedChannel;
+      if (!target) {
         return {
           content: [
             {
               type: "text",
-              text: "Please provide a channel name to join:",
+              text: "No Figma plugin detected yet. Open the AIConnect plugin in the " +
+                "Figma desktop app (Plugins → Development → AIConnect for Figma) so it " +
+                "connects, then call join_channel again. If you're running a relay " +
+                "separately, pass the channel code shown in the plugin instead.",
             },
           ],
-          followUp: {
-            tool: "join_channel",
-            description: "Join the specified channel",
-          },
         };
       }
 
-      await joinChannel(channel);
+      await joinChannel(target);
       return {
         content: [
           {
             type: "text",
-            text: `Successfully joined channel: ${channel}`,
+            text: channel
+              ? `Successfully joined channel: ${target}`
+              : `Auto-joined the plugin's channel: ${target}`,
           },
         ],
       };
@@ -4018,6 +4030,17 @@ server.tool(
 
 // Start the server
 async function main() {
+  // `aiconnect-figma-mcp relay` runs just the relay (a long-lived broker), useful
+  // when sharing one relay across several agents. The normal MCP server below
+  // already hosts the relay itself, so this subcommand is rarely needed.
+  if (args.includes('relay')) {
+    await startEmbeddedRelay();
+    logger.info(`Relay running on ws://localhost:${RELAY_PORT}. Leave this running.`);
+    // Keep the process alive serving the relay; do not start the stdio MCP server.
+    await new Promise(() => {});
+    return;
+  }
+
   try {
     // Host the relay in-process if the port is free (no separate terminal needed),
     // then connect to it as a client.

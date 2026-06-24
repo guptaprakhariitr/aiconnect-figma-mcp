@@ -427,7 +427,7 @@
 
         // Add instructions for localhost when disconnected
         if (!isConnected) {
-          statusMessage += `<br><br>Make sure your AI agent (the AIConnect MCP server) is running — it hosts the relay. Then click Connect.<br>Or start the relay manually:<br><code>npx -y -p aiconnect-figma-mcp aiconnect-figma-relay</code>`;
+          statusMessage += `<br><br>Waiting for your AI agent. The AIConnect MCP server hosts the connection — once your agent is running this turns green on its own (no button needed).<br><br>Not using an agent yet? Start the relay manually:<br><code>npx -y aiconnect-figma-mcp relay</code>`;
         }
 
         connectionStatus.innerHTML = statusMessage;

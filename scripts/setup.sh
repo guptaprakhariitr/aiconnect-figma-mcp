@@ -71,18 +71,17 @@ printf '%s\n' "$MCP_CONFIG"
 echo
 
 bold "Next steps"
-echo "  1) Start the local relay and leave it running:"
-echo
-echo "         $RUNTIME run relay        # or: npx -y -p aiconnect-figma-mcp aiconnect-figma-relay"
-echo
-echo "  2) In the Figma DESKTOP app (browser can't import dev plugins):"
+echo "  1) In the Figma DESKTOP app (browser can't import dev plugins):"
 echo "         Plugins → Development → Import plugin from manifest…"
 echo "         → choose  $ROOT/src/figma_plugin/manifest.json"
 echo
-echo "  3) Run  Plugins → Development → AIConnect for Figma."
-echo "     The panel connects to the relay and shows a CHANNEL ID — copy it."
+echo "  2) Run  Plugins → Development → AIConnect for Figma."
+echo "     The MCP server hosts the relay, so once your agent is running the"
+echo "     panel turns green on its own. (Standalone relay if ever needed:"
+echo "     $RUNTIME run relay  — or  npx -y aiconnect-figma-mcp relay)"
 echo
-echo "  4) In your agent, call  join_channel  with that id, then start designing."
+echo "  3) In your agent, just call  join_channel  (no arguments) — it"
+echo "     auto-detects the plugin's channel. Then start designing."
 echo
 ok "Done. Keep the Figma window focused while the agent works."
 echo

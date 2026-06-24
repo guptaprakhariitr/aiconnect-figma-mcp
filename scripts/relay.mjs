@@ -10,10 +10,11 @@
 // ws://localhost:3055. Behaviour matches src/socket.ts byte-for-byte on the
 // wire (join / message / progress_update / broadcast envelopes).
 //
-// Usage:
-//   npx -y -p aiconnect-figma-mcp aiconnect-figma-relay            # default port 3055
-//   PORT=4000 npx -y -p aiconnect-figma-mcp aiconnect-figma-relay  # custom port
-//   node scripts/relay.mjs
+// Usage (the MCP server hosts the relay itself; you only need this to run it
+// standalone, e.g. to share one relay across several agents):
+//   npx -y aiconnect-figma-mcp relay            # default port 3055
+//   PORT=4000 npx -y aiconnect-figma-mcp relay  # custom port
+//   node scripts/relay.mjs                      # from a clone
 
 import { WebSocketServer, WebSocket } from "ws";
 
