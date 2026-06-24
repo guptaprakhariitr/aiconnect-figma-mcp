@@ -50,13 +50,20 @@ Hi! Help me set up AIConnect for Figma on this machine and walk me through it.
 2. Walk me through downloading the plugin zip from the latest release
    (https://github.com/guptaprakhariitr/aiconnect-figma-mcp/releases/latest),
    unzipping it, and importing the manifest.json into the Figma desktop app.
-3. Once the plugin is running, call join_channel (no arguments — it
-   auto-detects the plugin) so we're connected.
+3. Tell me to RESTART you (start a fresh session) so the new tools load —
+   adding the server doesn't load its tools into this running session.
 
-Once we're connected, let's build something — go crazy.
+Then, in that fresh session, connect WITHOUT waiting for me:
+- Don't ask me whether the plugin says connected/disconnected. The plugin
+  panel being red just means no agent is attached yet — that's expected.
+- Just call get_status, and if it isn't joined, call join_channel with no
+  arguments (it auto-detects the running plugin). Do this on your own at the
+  start, then confirm we're connected and let's build.
 ```
 
-That's it. It installs the server (which brings the relay up automatically), walks you through the one manual Figma step, and connects. After that you just keep talking to it — _"apply the fintech-trust brand and build a pricing page,"_ _"generate a dark theme and bind it,"_ whatever. 🎉
+That's it. It installs the server (which brings the relay up automatically), walks you through the one manual Figma step, and — in a fresh session — connects on its own before the first build. You never have to report the plugin's status. After that you just keep talking to it — _"apply the fintech-trust brand and build a pricing page,"_ _"generate a dark theme and bind it,"_ whatever. 🎉
+
+> **Why restart?** MCP clients load a server's tools when a session starts. Right after you add AIConnect, the *current* session can't see `join_channel` yet — a fresh session loads it (and that session's server hosts the relay, which is what turns the plugin green). So the plugin showing red until your first message in a new session is normal; the agent connects itself from there.
 
 > Published on npm as [`aiconnect-figma-mcp`](https://www.npmjs.com/package/aiconnect-figma-mcp) — `npx` always pulls the latest.
 
@@ -142,7 +149,9 @@ Then in the **Figma desktop app** (not the browser): main menu → **Plugins →
 
 ### 4 · Run the plugin
 
-Run **Plugins → Development → AIConnect for Figma**. Once your agent is running, the panel turns **green** on its own — the MCP server hosts the connection, so there's no button to press and no code to copy.
+Run **Plugins → Development → AIConnect for Figma**. The panel may show **red ("Disconnected")** until an agent is attached — that's normal, not an error. Once a Claude Code / Cursor **session that has the server loaded** is running, it turns **green** on its own — no button to press, no code to copy.
+
+> First time after adding the server, **start a fresh session** so its tools load (see the restart note above). That fresh session's server is what hosts the relay and flips the plugin green.
 
 <div align="center">
 <img src="assets/screenshots/step-plugin-connected.png" width="420" alt="AIConnect plugin connected" />
@@ -150,7 +159,7 @@ Run **Plugins → Development → AIConnect for Figma**. Once your agent is runn
 
 ### 5 · Connect and build
 
-In your agent, call **`join_channel`** — **no arguments needed**; it auto-detects the running plugin. Then ask it to design. That's it. 🎉
+You don't report the plugin's status — your agent connects itself. It calls **`join_channel`** with **no arguments** (it auto-detects the running plugin) at the start, then designs. Just say _"connect and build me a pricing page"_ and go. 🎉
 
 <sub>(Running a relay standalone, or several plugins at once? Pass the channel code from the plugin: `join_channel("<code>")`.)</sub>
 
