@@ -5,6 +5,40 @@ All notable changes to **AIConnect for Figma** are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] — 2026-06-25
+
+### Fixed
+
+- **Node-only image ops.** `set_image_fill` and `batch_ops` image embedding used
+  `Bun.file()`, which threw under plain Node (the `npx` path). Now uses Node's
+  `fs`, so local-image fills work without Bun installed.
+- **Plugin config snippet.** The plugin's copy-paste MCP config used `bunx`,
+  pushing users toward Bun. It now emits `npx -y aiconnect-figma-mcp`.
+
+### Changed
+
+- **Robust auto-join.** `join_channel` (no args) now discovers the plugin's
+  channel via a relay `list_channels` query and **waits up to ~12 s** for the
+  plugin to come online — fixing failures when the agent connected before the
+  plugin was ready, or when an external relay was in use. Passing an explicit
+  channel code still works.
+
+## [1.2.0] — 2026-06-24
+
+### Changed
+
+- **Zero-friction connect.** `join_channel` auto-detects the running plugin's
+  channel — no code to copy. Added a `relay` subcommand
+  (`npx -y aiconnect-figma-mcp relay`) for running the relay standalone.
+
+## [1.1.0] — 2026-06-24
+
+### Changed
+
+- **Embedded relay.** The MCP server hosts the WebSocket relay in-process (binds
+  port 3055, falls back to an existing relay), so no separate relay terminal is
+  needed. Relicensed from AGPL-3.0 to **MIT**.
+
 ## [1.0.0] — 2026-06-18
 
 First stable release. AIConnect grew from a thin Figma read/write bridge into a

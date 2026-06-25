@@ -84,6 +84,9 @@ let currentChannel: string | null = null;
 // relay. Lets `join_channel` auto-join with no copy-pasted code in the common
 // case (server hosts the relay, one plugin connected).
 let lastObservedChannel: string | null = null;
+// Pending resolver for a `list_channels` discovery query (auto-join via an
+// external relay, where we don't see joins directly).
+let channelDiscoveryResolver: ((v: { channels: string[]; lastJoined: string | null }) => void) | null = null;
 
 // Create MCP server. The `instructions` block is surfaced to the agent on
 // connect — it teaches the high-leverage workflow so the tools are used well,
@@ -91,7 +94,7 @@ let lastObservedChannel: string | null = null;
 const server = new McpServer(
   {
     name: "AIConnectMCP",
-    version: "1.2.0",
+    version: "1.3.0",
   },
   {
     instructions: [
@@ -203,7 +206,7 @@ server.tool(
         if (op && op.command === "set_image_fill" && op.params && !op.params.imageBase64 && (op.params.imagePath || op.params.imageUrl)) {
           let bytes: Uint8Array;
           if (op.params.imagePath) {
-            bytes = new Uint8Array(await Bun.file(op.params.imagePath).arrayBuffer());
+            bytes = new Uint8Array(readFileSync(op.params.imagePath));
           } else {
             const r = await fetch(op.params.imageUrl);
             if (!r.ok) throw new Error(`fetch ${op.params.imageUrl} -> ${r.status}`);
@@ -783,7 +786,7 @@ server.tool(
     try {
       let bytes: Uint8Array;
       if (imagePath) {
-        bytes = new Uint8Array(await Bun.file(imagePath).arrayBuffer());
+        bytes = new Uint8Array(readFileSync(imagePath));
       } else if (imageUrl) {
         const r = await fetch(imageUrl);
         if (!r.ok) throw new Error(`fetch ${imageUrl} -> ${r.status}`);
@@ -3236,6 +3239,16 @@ function startEmbeddedRelay(port: number = RELAY_PORT): Promise<void> {
           return;
         }
 
+        // Channel discovery: lets a client (the MCP server) auto-find the
+        // plugin's channel without a copied code.
+        if (data.type === 'list_channels') {
+          const active = Array.from(channels.entries())
+            .filter(([, set]) => set.size > 0)
+            .map(([name]) => name);
+          send(sock, { type: 'channels', channels: active, lastJoined: lastObservedChannel });
+          return;
+        }
+
         if (data.type === 'join') {
           const channelName = data.channel;
           if (!channelName || typeof channelName !== 'string') {
@@ -3323,6 +3336,16 @@ function connectToFigma(port: number = RELAY_PORT) {
       }
 
       const json = JSON.parse(data) as ProgressMessage;
+
+      // Reply to a channel-discovery query (used by auto-join).
+      if (json.type === 'channels') {
+        if (channelDiscoveryResolver) {
+          const r = channelDiscoveryResolver;
+          channelDiscoveryResolver = null;
+          r({ channels: json.channels || [], lastJoined: json.lastJoined || null });
+        }
+        return;
+      }
 
       // Handle progress updates
       if (json.type === 'progress_update') {
@@ -3415,6 +3438,40 @@ function connectToFigma(port: number = RELAY_PORT) {
     logger.info('Attempting to reconnect in 2 seconds...');
     setTimeout(() => connectToFigma(port), 2000);
   });
+}
+
+// Ask the relay which channels are active (used when we don't host the relay
+// ourselves, so we never observed the plugin's join directly).
+function queryChannels(timeoutMs = 1500): Promise<{ channels: string[]; lastJoined: string | null }> {
+  return new Promise((resolve) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      resolve({ channels: [], lastJoined: null });
+      return;
+    }
+    const timer = setTimeout(() => {
+      if (channelDiscoveryResolver) { channelDiscoveryResolver = null; resolve({ channels: [], lastJoined: null }); }
+    }, timeoutMs);
+    channelDiscoveryResolver = (v) => { clearTimeout(timer); resolve(v); };
+    try { ws.send(JSON.stringify({ type: 'list_channels' })); } catch { clearTimeout(timer); channelDiscoveryResolver = null; resolve({ channels: [], lastJoined: null }); }
+  });
+}
+
+// Resolve the channel to join when the caller didn't specify one. Tries the
+// fast in-process signal first, then polls the relay so it also works with an
+// external relay and tolerates the plugin opening a moment later.
+async function resolveAutoChannel(maxWaitMs = 12000): Promise<string | null> {
+  const deadline = Date.now() + maxWaitMs;
+  let attempt = 0;
+  while (Date.now() <= deadline) {
+    if (lastObservedChannel) return lastObservedChannel;
+    const { channels, lastJoined } = await queryChannels();
+    const pick = lastJoined || channels[channels.length - 1] || null;
+    if (pick) return pick;
+    attempt++;
+    logger.info(`Auto-join: no plugin channel yet (attempt ${attempt}), waiting…`);
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  return null;
 }
 
 // Function to join a channel
@@ -3986,18 +4043,19 @@ server.tool(
   },
   async ({ channel }: any) => {
     try {
-      // Auto-join: if no channel was given, use the one the plugin announced
-      // through the embedded relay.
-      const target = channel || lastObservedChannel;
+      // Auto-join: if no channel was given, discover the plugin's channel —
+      // works whether we host the relay or connect to an external one, and waits
+      // briefly for the plugin to come online.
+      const target = channel || (await resolveAutoChannel());
       if (!target) {
         return {
           content: [
             {
               type: "text",
-              text: "No Figma plugin detected yet. Open the AIConnect plugin in the " +
+              text: "No Figma plugin detected. Open the AIConnect plugin in the " +
                 "Figma desktop app (Plugins → Development → AIConnect for Figma) so it " +
-                "connects, then call join_channel again. If you're running a relay " +
-                "separately, pass the channel code shown in the plugin instead.",
+                "connects, then call join_channel again (no arguments). If it still " +
+                "fails, pass the channel code shown in the plugin: join_channel(\"<code>\").",
             },
           ],
         };

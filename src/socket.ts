@@ -6,6 +6,8 @@ import { Server, ServerWebSocket } from "bun";
 
 // Store clients by channel
 const channels = new Map<string, Set<ServerWebSocket<any>>>();
+// Most recently joined channel — lets the MCP server auto-discover the plugin.
+let lastJoinedChannel: string | null = null;
 
 function handleConnection(ws: ServerWebSocket<any>) {
   // Don't add to clients immediately - wait for channel join
@@ -88,6 +90,12 @@ const server = Bun.serve({
         }
         console.log(`Full message:`, JSON.stringify(data, null, 2));
 
+        if (data.type === "list_channels") {
+          const active = [...channels.entries()].filter(([, s]) => s.size > 0).map(([name]) => name);
+          ws.send(JSON.stringify({ type: "channels", channels: active, lastJoined: lastJoinedChannel }));
+          return;
+        }
+
         if (data.type === "join") {
           const channelName = data.channel;
           if (!channelName || typeof channelName !== "string") {
@@ -106,6 +114,7 @@ const server = Bun.serve({
           // Add client to channel
           const channelClients = channels.get(channelName)!;
           channelClients.add(ws);
+          lastJoinedChannel = channelName;
 
           console.log(`\n✓ Client joined channel "${channelName}" (${channelClients.size} total clients)`);
 

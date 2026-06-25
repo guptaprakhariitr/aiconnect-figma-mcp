@@ -22,6 +22,8 @@ const PORT = Number(process.env.PORT || process.env.AICONNECT_RELAY_PORT || 3055
 
 // Store clients by channel.
 const channels = new Map();
+// Most recently joined channel — lets the MCP server auto-discover the plugin.
+let lastJoinedChannel = null;
 
 const wss = new WebSocketServer({ port: PORT });
 
@@ -51,6 +53,12 @@ wss.on("connection", (ws) => {
 
     const type = data.type;
 
+    if (type === "list_channels") {
+      const active = [...channels.entries()].filter(([, s]) => s.size > 0).map(([name]) => name);
+      send(ws, { type: "channels", channels: active, lastJoined: lastJoinedChannel });
+      return;
+    }
+
     if (type === "join") {
       const channelName = data.channel;
       if (!channelName || typeof channelName !== "string") {
@@ -60,6 +68,7 @@ wss.on("connection", (ws) => {
       if (!channels.has(channelName)) channels.set(channelName, new Set());
       const channelClients = channels.get(channelName);
       channelClients.add(ws);
+      lastJoinedChannel = channelName;
       console.log(`✓ Client joined channel "${channelName}" (${channelClients.size} total clients)`);
 
       send(ws, { type: "system", message: `Joined channel: ${channelName}`, channel: channelName });
